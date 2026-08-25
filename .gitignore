@@ -26,3 +26,6 @@ Thumbs.db
 # Large media (link videos externally instead of committing them)
 *.mp4
 *.mov
+
+# Local practice/dry-run scaffolding — not part of the actual submission
+practice/
