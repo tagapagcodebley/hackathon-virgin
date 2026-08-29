@@ -1,5 +1,13 @@
 # Agent Trajectories
 
+> **Superseded for current work:** per [`CLAUDE.md`](../CLAUDE.md), this
+> repo now keeps **one running trajectory file per activity**
+> (`session-trajectory.md`, stage-gate delineated) rather than the
+> numbered-per-step files this document describes below. See
+> [`session-trajectory.md`](session-trajectory.md) for the real
+> submission's log. Kept here for reference in case a numbered breakdown
+> is ever useful for a specific deep-dive.
+
 Representative trajectories for every coding agent used in this submission, from the instructions given to the agent through to the final result.
 
 Each trajectory should make it easy for a judge to follow:

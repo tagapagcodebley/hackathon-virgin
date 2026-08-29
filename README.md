@@ -1,14 +1,43 @@
-# Micro1 Frontier Engineering Challenge 2026
+# Sauron
 
-> Solo submission for the [micro1 Frontier Engineering Challenge 2026](https://www.hackerearth.com/community/challenges/hackathon/micro1-frontier-engineering-challenge-2026/).
+> The eye that watches so you don't have to. Solo submission for the
+> [micro1 Frontier Engineering Challenge 2026](https://www.hackerearth.com/community/challenges/hackathon/micro1-frontier-engineering-challenge-2026/).
+
+**Status:** 🚧 Stage 1 (Scaffolding) — problem chosen, folders/placeholders
+in place, no real implementation yet. Two full dry runs of this repo's
+stage-gated process (scaffold → basic → advanced → finalize, see
+[`CLAUDE.md`](CLAUDE.md)) are complete in gitignored `practice/` and
+`practice2/` folders — not part of this submission. Running trajectory for
+this submission:
+[`trajectories/session-trajectory.md`](trajectories/session-trajectory.md).
+Full problem framing: [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md).
 
 ## The problem
 
-*(Fill in once the problem PDF drops at kickoff.)*
+Point Sauron at a page, tell it in plain language what you're watching
+for, say how long to watch and how often to check — it drafts your next
+move the moment a real match shows up, then waits for you to approve it.
 
-- **Who is the intended user?**
-- **What is their current bottleneck?**
-- **Why does solving it matter?**
+- **Who is the intended user?** Someone trying to grab a rare,
+  unpredictably-released reservation slot on a booking portal that offers
+  no alert feature of its own — a public tennis court, a DMV/visa
+  appointment, a campsite permit. Demoed against a synthetic tennis-court
+  reservation portal; the config (source page, `watch_for`, `auto_expire`,
+  `poll_interval`) is generic, not booking-specific.
+- **What is their current bottleneck?** They can't watch the page 24/7.
+  Existing page-watch tools (changedetection.io, Distill.io, Visualping,
+  and others — see [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md)'s
+  "Prior art" section) only do keyword/CSS-diff matching: they can't tell
+  a negation ("no slots available" contains the same substring as a real
+  match) from a real opening, can't tell a match against the user's full
+  criteria from a near-miss, and even on a correct hit, only notify —
+  the user still reads, judges, and fills out the form by hand, under
+  time pressure.
+- **Why does solving it matter?** It collapses the time between "a
+  matching opening appears" and "a drafted next step is ready for
+  one-tap approval" from human-reaction-time down to seconds, without
+  ever letting an agent take a consequential action (like placing a hold)
+  on its own — see PROBLEM_STATEMENT.md's "On automated holds."
 
 ## Solutions
 
@@ -44,3 +73,14 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full iteration history with evidence 
 ## Main failure mode & hot take
 
 *(Fill in at the end: what breaks, and your one-sentence opinionated takeaway.)*
+
+## Future work (out of scope for this submission)
+
+- **Browser extension front-end.** Point-and-click element selection and
+  free access to logged-in pages are real advantages of the
+  Distill.io/Wachete model — but a Manifest V3 extension is a lot of
+  install/permission overhead for a judge reproducing the main result
+  from a clean environment, so this submission stays a CLI/service. See
+  [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md) for the full reasoning.
+- **Live-site holds.** Always out of scope here — see
+  PROBLEM_STATEMENT.md's "On automated holds."

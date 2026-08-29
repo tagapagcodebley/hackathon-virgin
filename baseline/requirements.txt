@@ -1,0 +1,2 @@
+# TODO: pin once implementation starts (Stage 2).
+# Expected: requests (or similar) for fetch, pytest for tests.
