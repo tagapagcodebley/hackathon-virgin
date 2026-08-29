@@ -6,7 +6,12 @@ See [`PROBLEM_STATEMENT.md`](../PROBLEM_STATEMENT.md) for the full framing, incl
 
 ## Approach
 
-An LLM-agent pipeline built from five pieces:
+An LLM-agent pipeline built from six pieces. Semantic judgment is a real
+[Anthropic API](https://docs.anthropic.com/) call (`claude-haiku-4-5`,
+tool-use for structured output — see `detector.py`'s `_classify_via_llm`)
+— injectable everywhere it's used, so tests and `eval/run_eval.py --fake`
+never touch the network or cost anything, while the real, default eval
+and deployment paths do (see `../docs/REPRODUCTION.md`'s "Approx cost").
 
 | Module | Role |
 |---|---|
@@ -34,11 +39,31 @@ action (the submit) behind a live human approval gate.
 
 ## Measured improvement
 
-TODO — filled in Stage 3/4 once both solutions run against
-[`../eval/CASES.md`](../eval/CASES.md), with the comparison table and
-links to the relevant [`../CHANGELOG.md`](../CHANGELOG.md) entries.
+Real run (`python -m eval.run_eval --solution advanced`, real Anthropic
+`claude-haiku-4-5` calls — see [`../CHANGELOG.md`](../CHANGELOG.md) for
+the full entry):
+
+```
+TP=3  FP=0  TN=9  FN=0
+Precision:            1.00
+Recall:               1.00
+False-positive rate:  0.00
+```
+
+vs. baseline's precision 0.38 / recall 1.00 / false-positive rate 0.56
+on the same 12 cases. Perfect classification, including every case
+baseline gets wrong: negation, all three criteria near-misses, and the
+ambiguous FAQ mention.
 
 ## Status
 
-TODO — placeholder only, Stage 1 (scaffolding). Implementation lands in
-Stage 3.
+Implemented (Stage 3) and verified with a real API run — not just
+`--fake`. 70/70 tests pass (`python -m pytest advanced/ baseline/
+test_notifications.py -v`), the unit tests all against injected fakes
+(no network, no API key, no cost) and the real CLI additionally run live
+end-to-end: config loading, fixture fetch, real semantic detection +
+verification, a drafted action with genuine LLM reasoning, and the
+interactive approval prompt (confirmed both declining safely on
+non-interactive/EOF stdin and completing the approve → simulated-submit
+→ log-write path). See [`../docs/REPRODUCTION.md`](../docs/REPRODUCTION.md)
+for exact commands.

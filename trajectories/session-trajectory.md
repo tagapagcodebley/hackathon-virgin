@@ -792,3 +792,161 @@ scripts. Caught and fixed a real would-be bug (empty-string keyword
 matching everything) before it could ship, by testing the negative case
 (a config'd keyword absent from the fixture) rather than only the happy
 path.
+
+---
+
+## Stage 3: implement the advanced solution for real
+
+### Instructions given (verbatim, user message)
+
+> commit stage 2 and proceed to stage 3
+
+### What the agent did — locking in Stage 2
+
+1. Checked `deploy/`'s config surface against `baseline/watcher.py`'s
+   actual CLI one more time (per the agent's own suggestion at the end
+   of the previous turn) — confirmed full parity, nothing left exposed
+   in Python but missing from the PowerShell layer.
+2. Verified no stray secrets/state files in `deploy/`/`advanced/deploy/`
+   before staging (`ls` both directories — only example/template files
+   and README/vbs present).
+3. Committed as `086f2eb`, "Stage 2: implement baseline (keyword-diff
+   watcher) and make it deployable" (37 files).
+
+### What the agent did — Stage 3 (real advanced implementation)
+
+1. Checked the environment for LLM access before designing anything:
+   `ANTHROPIC_API_KEY` not set; `anthropic` Python package (0.111.0) is
+   installed; no `claude` CLI binary available to shell out to instead.
+   Inspected the installed SDK directly (`messages.create`'s signature,
+   `ToolUseBlock`'s fields, `tool_choice` shape) to write correct
+   tool-use code without a live call to verify against, rather than
+   guessing at API details from memory.
+2. Extracted `fetch_page_state` out of `baseline/watcher.py` into a new
+   shared `fetching.py` (used identically by both solutions) — a small,
+   non-behavioral refactor; re-ran baseline's tests immediately after to
+   confirm no regression.
+3. Implemented all six `advanced/` modules for real:
+   - `criteria.py` — `WatchConfig` + `load_config()` (JSON) +
+     `default_auto_expire()`.
+   - `memory.py` — JSON-persisted decoy/already-surfaced tracking.
+   - `detector.py` — `detect()`/`verify()`, with a real default
+     classifier (`_classify_via_llm`, `claude-haiku-4-5`, tool-use for
+     structured `is_match`/`reasoning`), a memory-short-circuit path
+     that skips the LLM call entirely on an exact repeat, and a clear
+     `RuntimeError` (not a raw traceback) when `ANTHROPIC_API_KEY` is
+     missing.
+   - `action_drafter.py` — `DraftedAction` + `draft()`.
+   - `approval.py` — `request_approval()` (alerts via `notifications.py`,
+     then a synchronous `input()` prompt only when
+     `sys.stdin.isatty()`, otherwise an honest automatic decline — no
+     live human to ask under a Scheduled Task) + `simulated_submit()`
+     (appends a local JSON log line, no network path exists in this
+     function at all).
+   - `watcher.py` — the orchestrator: `has_changed()`,
+     `next_poll_interval()` (tightens near `release_date`, provably
+     ignores `auto_expire`), and `run()` wiring auto_expire-failsafe →
+     fetch (guarded, matching baseline's fetch-error handling) →
+     has_changed → detect → verify → draft → request_approval →
+     submit_fn, with every side-effecting dependency (`fetch_fn`,
+     `classify`, `notifier`, `approve_fn`, `submit_fn`) injectable.
+4. Wrote 51 new tests across 6 files (`test_criteria.py`,
+   `test_memory.py`, `test_detector.py`, `test_action_drafter.py`,
+   `test_approval.py`, `test_watcher.py`), covering every content-diff
+   case in `eval/CASES.md` plus the two clock-based orchestration cases,
+   all against injected deterministic fakes — confirmed and documented
+   in each test file's docstring that this proves the *plumbing* is
+   correct, not that the LLM's judgment is good (that's what a real eval
+   run measures). All 51 passed on first full run after fixing one
+   real bug caught immediately: `run()`'s default `now` used
+   `datetime.now(timezone.utc)` while `criteria.py`'s
+   `datetime.fromisoformat()` on plain ISO strings produces naive
+   datetimes — comparing them would raise `TypeError`. Fixed by making
+   the whole system consistently naive rather than partially aware.
+5. While testing (not while writing docs), discovered `run()` didn't
+   guard its fetch call the way baseline does, and `simulated_submit`
+   wasn't injectable (would have polluted the real log file under test).
+   Fixed both before writing the tests that depended on them, and added
+   a matching guard to `verify()`'s internal re-fetch for consistency.
+6. Ran the real CLI (`python -m advanced.watcher --config ...`) to
+   verify wiring beyond what unit tests cover — it failed with a raw,
+   ugly Python traceback exactly at the Anthropic client's
+   authentication step, confirming everything before that (CLI parsing,
+   config loading, fixture fetch, state handling) was correct. Treated
+   the ugly traceback itself as a real UX bug (same standard already
+   applied to baseline's fetch errors and email's missing credentials) —
+   added an explicit `ANTHROPIC_API_KEY` pre-check with a clear
+   `RuntimeError`, caught cleanly at both the Python CLI level and (new)
+   a PowerShell-level pre-check in `deploy/run_watcher.ps1`, mirroring
+   the existing `secrets.ps1`-for-email check. Verified both failure
+   paths produce clean, actionable messages instead of tracebacks.
+7. Built `eval/run_eval.py`'s `score_advanced()`: real Anthropic calls
+   by default (matching the rulebook's expected "Approx cost" reporting
+   for a genuine agent run), with `--fake` as an explicit, clearly
+   labeled $0 opt-out running the same pipeline against a hand-written
+   stub classifier — for verifying plumbing correctness without a key,
+   not for citing as the measured result. Ran `--fake` for real: got
+   TP=3 FP=2 TN=7 FN=0 (precision 0.60, recall 1.00, FP rate 0.22) — an
+   improvement over baseline's 0.38 precision, but the stub still
+   misclassified the date/time near-miss cases (07-08) because it
+   checked for matching phrases as whole-page substrings rather than
+   confirming they co-occur in the same table row. Deliberately did NOT
+   patch the stub to hide this — recorded it in CHANGELOG.md as an
+   honest, non-cherry-picked finding that motivates why real contextual
+   LLM understanding should do better, rather than polishing a fake
+   result to look cleaner than it honestly is.
+8. Resolved `eval/CASES.md`'s one remaining open TODO (case 12's
+   expected advanced behavior) using what was actually built and tested:
+   `verify()` declines when the opening closes between detection and
+   re-fetch. Wrote this up as the project's Hot Take (a real trade-off —
+   verification turns some false positives into false negatives on
+   anything racing against real time — not an unqualified win), and
+   corrected case 11's row, which had overclaimed memory dedup for the
+   *evolved* 11a→11b fixture pair specifically — testing revealed memory
+   only catches byte-identical repeats, not the evolved variant that's
+   actually in that fixture pair, so the row was rewritten to say so
+   honestly, with the true exact-repeat-dedup behavior pointed at a
+   separate test that actually exercises it.
+9. Extended `deploy/run_watcher.ps1`/`register_task.ps1` for advanced's
+   different CLI shape (`--config`/`--memory` vs. baseline's
+   `--source`/`--keyword`) rather than pretending they're the same — new
+   `-ConfigPath`/`-MemoryPath` params, same CLI-arg > config.ps1 >
+   default precedence already established for `Source`/`Notify`/`Keyword`.
+   Added `ANTHROPIC_API_KEY` to `secrets.example.ps1`. Verified for real:
+   baseline regression-free through the updated wrapper; advanced fails
+   cleanly at the PowerShell layer (before even invoking Python) when
+   the key is missing.
+10. Updated every relevant doc with real content in place of TODOs:
+    `advanced/README.md` (Status, Measured improvement pointing at
+    CHANGELOG), `docs/REPRODUCTION.md` (real advanced commands, updated
+    Approx cost/runtime with real figures), `deploy/README.md` (the
+    two solutions' different config shapes), `eval/CASES.md` (cases 11
+    and 12 corrected to match actual tested behavior, Status section),
+    root `README.md` (status line, Agent disclosure filled in, Quickstart
+    extended, and a real Main failure mode & hot take section written
+    from the case-12 finding above — not a placeholder).
+11. Final full regression pass: `python -m pytest baseline/ advanced/
+    test_notifications.py -q` → 69/69 passed. `git status --short`
+    confirmed only intended files changed, no leftover state/memory/log
+    artifacts from any of the manual CLI verification runs above.
+
+### Human checkpoint
+
+Stage 3 implementation is complete and internally verified (69/69 tests,
+correct CLI wiring up to the live API boundary, clean error handling)
+but the real, measured advanced numbers are still pending: this sandbox
+has no `ANTHROPIC_API_KEY`. Surfacing this to the user as an open
+question rather than presenting `--fake` numbers as final — need either
+a key to run the real eval, or an explicit decision to defer that to the
+user running it themselves later.
+
+### Outcome
+
+Advanced is now a real, tested, six-module LLM-agent pipeline, not a
+placeholder — every side-effecting dependency injectable, 51 new tests
+covering all 14 cases in `eval/CASES.md` against deterministic fakes,
+the real CLI verified correct up to the point where it needs a key this
+environment doesn't have, and two real design corrections made from
+what testing actually revealed (case 11's honest memory-dedup limit,
+case 12's verification trade-off, now the project's Hot Take) rather
+than from what the original design intended.

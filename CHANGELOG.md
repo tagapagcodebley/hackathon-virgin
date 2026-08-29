@@ -20,6 +20,144 @@ Keep cosmetic/no-op changes out of this file — only entries that moved a metri
 
 <!-- Newest entries at the top -->
 
+### [2026-08-29] Real advanced numbers: precision 1.00, recall 1.00 — plus three bugs the first real run surfaced
+
+**Evidence:** The previous entry's `--fake` numbers were explicitly
+flagged as not the measured result. User provided a real
+`ANTHROPIC_API_KEY` (via `deploy/secrets.ps1`, dot-sourced directly into
+a single command that also ran the eval — the key never entered this
+conversation or got read/printed by the agent). First real run
+(`python -m eval.run_eval --solution advanced`) surfaced three genuine
+bugs in quick succession, each fixed and verified before moving to the
+next:
+
+1. `anthropic.BadRequestError: ... anthropic-workspace-id is required
+   when authenticating with an identity-linked API key`. Not a bug in
+   the request logic — this API key type needs an extra header the base
+   SDK client doesn't attach automatically. User switched to a standard
+   (non-identity-linked) key instead, sidestepping it.
+2. `JSONDecodeError: Unexpected UTF-8 BOM` — `advanced/criteria.py`'s
+   `load_config()` used strict `utf-8`, and a config file written by
+   PowerShell's own `Set-Content -Encoding utf8` (or Notepad) carries a
+   BOM by default. Fixed with `encoding="utf-8-sig"`, which strips a BOM
+   when present and is identical to `utf-8` otherwise — a real
+   Windows-deployment robustness gap, not just a test-harness artifact,
+   so it got a real test (`test_load_config_handles_utf8_bom`).
+3. During a live end-to-end CLI run: the interactive approval prompt
+   printed the full drafted action twice (once via the notifier, again
+   inside the `input()` prompt string) and crashed with an uncaught
+   `EOFError` when stdin had no data to read. Fixed `advanced/approval.py`'s
+   `_default_approve()` to prompt with just the short question (the
+   notifier already showed the full action) and to catch `EOFError` as
+   a safe decline, consistent with the "never auto-approve, never crash,
+   decline when unsure" pattern already used everywhere else in this
+   project.
+
+**Change:** The three fixes above, plus a real end-to-end verification
+pass: ran `python -m eval.run_eval --solution advanced` for real, then
+manually ran `python -m advanced.watcher` twice more against a live
+match — once confirming the interactive prompt now shows clean, correct
+reasoning and declines safely on EOF; once with piped `"y"` input,
+confirming `sys.stdin.isatty()` correctly treats a pipe as non-interactive
+(no live human answering in real time) and declines rather than guessing,
+exactly as designed.
+
+**Result:** Real, measured `advanced` numbers, replacing the `--fake`
+placeholder in the entry below:
+
+```
+TP=3  FP=0  TN=9  FN=0
+Precision:            1.00
+Recall:               1.00
+False-positive rate:  0.00
+classify() calls:     15 (~2 per confirmed match: detect + verify)
+```
+
+Perfect score across all 12 content-diff cases — including every case
+baseline (precision 0.38) and the `--fake` stub (precision 0.60) got
+wrong: negation (06), all three criteria near-misses (07-09), and the
+ambiguous FAQ mention (10). Sample reasoning from the real model on case
+05: *"The page shows 'Saturday 9:00-11:00 AM Slot available - up to 4
+players,' which exactly matches all stated criteria: Saturday, 9-11am
+time slot, and 4-person capacity."* — genuinely reading the criteria
+compositionally rather than pattern-matching a phrase, which is exactly
+the gap both baseline and the hand-written stub had (see the entry
+below). 70/70 tests still pass after all three fixes.
+
+### [2026-08-29] Advanced implemented: LLM-agent pipeline (Stage 3)
+
+**Evidence:** Baseline's measured failure shape (precision 0.38, recall
+1.00 — see the entry below) on negation, criteria near-misses, and the
+FAQ mention, plus `eval/CASES.md`'s full case list, defined exactly what
+advanced needed to fix while holding recall at 1.00.
+
+**Change:** Implemented all six `advanced/` modules for real (no more
+`NotImplementedError`): `criteria.py` (`WatchConfig` JSON loading),
+`memory.py` (JSON-persisted decoy/already-surfaced tracking),
+`detector.py` (`detect()`/`verify()`, with a real default classifier —
+an Anthropic `claude-haiku-4-5` tool-use call for structured
+`is_match`/`reasoning` output), `action_drafter.py`, `approval.py`
+(notifies via `notifications.py`, then a synchronous approval prompt
+when interactive, an honest automatic decline when not — see its module
+docstring), and `watcher.py` (the orchestrator: `auto_expire` failsafe,
+`release_date`-driven adaptive polling via `next_poll_interval()`, and
+the full detect → verify → draft → approve → submit flow). Extracted
+`fetch_page_state` out of `baseline/watcher.py` into a shared
+`fetching.py` so both solutions use identical fetch semantics. 51 new
+tests across 5 files (`test_criteria.py`, `test_memory.py`,
+`test_detector.py`, `test_action_drafter.py`, `test_approval.py`,
+`test_watcher.py`), all against injected fakes — zero network, zero API
+key, zero cost, per CLAUDE.md's testing rule. Extended `eval/run_eval.py`
+with `score_advanced()`, real by default (calls the actual API) with a
+`--fake` flag for a $0 pipeline-correctness check against a
+deliberately-not-perfected stubbed classifier.
+
+**Result:** 51/51 new tests pass; 69/69 across the whole repo. Verified
+the real CLI end-to-end up to the live API call itself — config loading,
+fixture fetch, state/memory persistence, and a clean, actionable error
+when `ANTHROPIC_API_KEY` is missing (both from the Python CLI and from
+`deploy/run_watcher.ps1`'s pre-check) all confirmed correct; this
+sandbox had no Anthropic API key available at the time this entry was
+written, so the live call itself was unverified here — **see the entry
+above this one for the real run**, done immediately afterward once a key
+was provided, including three more real bugs it surfaced and fixed.
+
+`--fake` pipeline sanity check (NOT the measured result — a
+hand-written stub, not the real agent):
+
+```
+TP=3  FP=2  TN=7  FN=0
+Precision:            0.60
+Recall:               1.00
+False-positive rate:  0.22
+```
+
+This is itself a useful, honest finding: the stub correctly catches
+negation (case 06) and the party-size near-miss (case 09) via targeted
+checks, but still misclassifies the date and time near-misses (cases
+07-08) as matches, because it checks for "Saturday" / "9:00-11:00 AM" /
+"4 players" as whole-page substrings rather than confirming they occur
+*in the same table row*. A real LLM reading the page holistically
+should associate those fields contextually and get this right — but
+that's exactly the point: a hand-rolled heuristic, even one written with
+the fixtures in hand, still falls short of genuine contextual
+understanding. The stub was deliberately left as-is rather than patched
+to hide this — see PROBLEM_STATEMENT.md's hot take.
+
+**Case 12 (the challenging case), resolved:** `verify()` correctly
+declines when the opening closes between detection and the re-fetch
+(`advanced/test_detector.py::test_verify_catches_the_flappy_slot_closing`,
+`advanced/test_watcher.py::test_flappy_slot_is_declined_after_verification`)
+— see `eval/CASES.md`'s design note for the trade-off this surfaces.
+
+**Update:** the real run happened — see the entry above this one.
+Precision went 0.60 (`--fake`) → 1.00 (real), confirming the guess above
+that the real model would beat the stub's whole-page-substring
+heuristic on cases 07-08. Don't cite the `--fake` numbers in this entry
+as the submission's headline result; they're preserved here only as the
+honest record of what pipeline verification looked like before a key
+was available.
+
 ### [2026-08-29] Hidden-window execution moved from shared infra to an advanced-only improvement
 
 **Evidence:** User feedback: the hidden-window scheduling wrapper "was a

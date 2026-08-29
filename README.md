@@ -3,12 +3,16 @@
 > The eye that watches so you don't have to. Solo submission for the
 > [micro1 Frontier Engineering Challenge 2026](https://www.hackerearth.com/community/challenges/hackathon/micro1-frontier-engineering-challenge-2026/).
 
-**Status:** 🚧 Stage 2 (Baseline) — baseline implemented and passing
-(18/18 tests; precision 0.38 / recall 1.00 / false-positive rate 0.56 —
-see [`CHANGELOG.md`](CHANGELOG.md)), and deployable standalone (real
-email notifications + Windows Scheduled Task — see
-[`deploy/README.md`](deploy/README.md)). Advanced solution not started
-yet. Full process log: [`trajectories/session-trajectory.md`](trajectories/session-trajectory.md).
+**Status:** ✅ Stage 3 (Advanced) complete and measured for real — both
+solutions implemented and passing (70/70 tests across the repo), both
+deployable standalone (real email/console notifications + Windows
+Scheduled Task — see [`deploy/README.md`](deploy/README.md)). Baseline:
+precision 0.38 / recall 1.00 / false-positive rate 0.56. **Advanced
+(real Anthropic API, not a stub): precision 1.00 / recall 1.00 /
+false-positive rate 0.00** — perfect on all 12 cases, including every
+one baseline gets wrong. See [`CHANGELOG.md`](CHANGELOG.md) for the full
+story. Full process log:
+[`trajectories/session-trajectory.md`](trajectories/session-trajectory.md).
 Full problem framing: [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md).
 
 ## The problem
@@ -49,8 +53,8 @@ This repo contains two solutions, per the competition rules:
 
 ## Agent disclosure
 
-- **Agent(s) used:** *(e.g. Claude Code, Cursor, ...)*
-- **Model(s) used:** *(e.g. claude-sonnet-5)*
+- **Agent(s) used:** Claude Code, to build and test this entire repo (this README included).
+- **Model(s) used:** `claude-sonnet-5` (Claude Code, building this repo); `claude-haiku-4-5` (Sauron's own detector — the agent Sauron *is*, not the agent that built it, see `advanced/detector.py`).
 - Trajectories for every agent used are in [`trajectories/`](trajectories/) — see that folder's README for how to read them.
 
 ## Quickstart
@@ -59,8 +63,10 @@ See [`docs/REPRODUCTION.md`](docs/REPRODUCTION.md) for full setup and run instru
 
 ```bash
 pip install -r baseline/requirements.txt
-python -m pytest baseline/ test_notifications.py -v
-python -m eval.run_eval --solution baseline
+pip install -r advanced/requirements.txt
+python -m pytest baseline/ advanced/ test_notifications.py -v
+python -m eval.run_eval --solution both               # needs ANTHROPIC_API_KEY for advanced's real numbers
+python -m eval.run_eval --solution advanced --fake     # $0 pipeline sanity check instead, if you don't have a key handy
 ```
 
 ## Improvement changelog
@@ -73,7 +79,23 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full iteration history with evidence 
 
 ## Main failure mode & hot take
 
-*(Fill in at the end: what breaks, and your one-sentence opinionated takeaway.)*
+**Main failure mode:** the flappy-slot race (`eval/CASES.md` case 12).
+Advanced's verification step — added specifically to cut false
+positives from a transient glitch — correctly declines to draft an
+action when the opening closes between the initial detection and the
+re-fetch. That's the intended behavior, but it means a genuinely
+fleeting real opportunity gets silently missed, not just flagged with
+lower confidence. Baseline, with no verification step at all, would
+have fired a notification on the initial read for whatever that's worth
+by the time a human reads it.
+
+**Hot take:** verification is a trade, not a strict improvement —
+turning false positives into false negatives on anything that's racing
+against real time. The fix for a race isn't smarter detection, it's
+tighter polling near the moment that actually matters (`release_date`-driven
+adaptive polling, see `advanced/watcher.py`'s `next_poll_interval()`),
+because no amount of reasoning about a page state can out-run how often
+you actually looked at it.
 
 ## Future work (out of scope for this submission)
 

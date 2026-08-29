@@ -18,6 +18,7 @@ from typing import Callable
 
 import requests
 
+from fetching import fetch_page_state
 from notifications import NOTIFIERS, console_notify
 
 DEFAULT_KEYWORD = "slot available"
@@ -31,21 +32,6 @@ def _visible_text(html: str) -> str:
     shows readable text instead of a wall of tags.
     """
     return _WHITESPACE_RE.sub(" ", _TAG_RE.sub(" ", html)).strip()
-
-
-def fetch_page_state(source: str) -> str:
-    """Return the current page text from `source`.
-
-    `source` is a URL in production, a fixture file path in tests/eval —
-    keeping fetch this simple (no separate injected fake) is enough to
-    keep tests off the live network, since eval always passes a local
-    fixture path (see CLAUDE.md's testing rule).
-    """
-    if source.startswith("http://") or source.startswith("https://"):
-        response = requests.get(source, timeout=10)
-        response.raise_for_status()
-        return response.text
-    return Path(source).read_text(encoding="utf-8")
 
 
 def has_changed(previous: str | None, current: str) -> bool:

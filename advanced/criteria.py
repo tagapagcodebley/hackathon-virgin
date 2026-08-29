@@ -1,4 +1,4 @@
-"""WatchConfig — the generic, user-supplied config given to the detector
+"""WatchConfig -- the generic, user-supplied config given to the detector
 agent on every poll: what page, what to watch for (plain language), and
 two distinct dates that must not be conflated (see
 PROBLEM_STATEMENT.md's "Auto-expire vs. release date"):
@@ -6,66 +6,85 @@ PROBLEM_STATEMENT.md's "Auto-expire vs. release date"):
 - `release_date` drives urgency/adaptive polling.
 - `auto_expire` is a failsafe unregister date, unrelated to timing.
 
-Not baked into a booking-specific schema — the tennis-court demo is one
+Not baked into a booking-specific schema -- the tennis-court demo is one
 instance of this, not the shape itself.
-
-Stage 1 scaffolding only.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Optional
 
 DEFAULT_AUTO_EXPIRE_BUFFER = timedelta(hours=24)
 
 
 @dataclass
 class WatchConfig:
-    """TODO: fields —
-
-    - source: str — URL in production, fixture path in tests/eval.
-    - watch_for: str — plain-language description of the condition to
-      detect, e.g. "a Saturday 9-11am court booking for 4 people". This
-      is what the advanced detector reasons over semantically, and what
-      the baseline reduces to a keyword substring match.
-    - release_date: datetime | None — the user's best guess of when the
-      watched-for condition is expected to become true (e.g. an expected
-      ticket on-sale date, NOT the concert date itself — tickets go on
-      sale well before the event). Optional: unknown for something like
-      a permit portal with no announced opening. Drives adaptive polling
-      (see watcher.next_poll_interval) — has no bearing on auto_expire.
-    - auto_expire: datetime — a failsafe unregister date. Purely a
-      safety net so a forgotten watcher doesn't poll forever; carries no
-      timing signal of its own. Required. Defaults to
-      `release_date + DEFAULT_AUTO_EXPIRE_BUFFER` when release_date is
-      set (see default_auto_expire below); must be set explicitly
-      otherwise.
-    - poll_interval: timedelta — base polling rate, used unmodified when
-      release_date is unset or far away. Baseline always uses this value
-      unmodified regardless of release_date.
-    """
-
-    # TODO: source: str
-    # TODO: watch_for: str
-    # TODO: release_date: datetime | None
-    # TODO: auto_expire: datetime
-    # TODO: poll_interval: timedelta
+    source: str
+    watch_for: str
+    auto_expire: datetime
+    poll_interval: timedelta = timedelta(minutes=15)
+    release_date: Optional[datetime] = None
 
 
 def load_config(path: str) -> WatchConfig:
-    """TODO: load a WatchConfig from a config file (JSON/YAML)."""
-    raise NotImplementedError
+    """Load a WatchConfig from a JSON file.
+
+    Expected shape (see advanced/watch_config.example.json):
+        {
+          "source": "...",
+          "watch_for": "...",
+          "release_date": "2026-09-05T00:00:00" | null,
+          "auto_expire": "2026-09-06T00:00:00" | null,
+          "poll_interval_minutes": 15
+        }
+
+    `auto_expire` may be omitted/null when `release_date` is set, in
+    which case it defaults via default_auto_expire(). It's an error to
+    omit both -- there's no safe default without a reference date.
+    """
+    # utf-8-sig transparently strips a UTF-8 BOM if present (common in
+    # JSON files saved by Windows editors/PowerShell's own Set-Content)
+    # and behaves identically to plain utf-8 otherwise.
+    with open(path, encoding="utf-8-sig") as f:
+        data = json.load(f)
+
+    release_date = (
+        datetime.fromisoformat(data["release_date"]) if data.get("release_date") else None
+    )
+    raw_auto_expire = data.get("auto_expire")
+    if raw_auto_expire:
+        auto_expire = datetime.fromisoformat(raw_auto_expire)
+    else:
+        auto_expire = default_auto_expire(release_date)
+        if auto_expire is None:
+            raise ValueError(
+                f"{path}: auto_expire is required when release_date is not set -- "
+                "there's no safe default without a reference date."
+            )
+
+    poll_interval = timedelta(minutes=data.get("poll_interval_minutes", 15))
+
+    return WatchConfig(
+        source=data["source"],
+        watch_for=data["watch_for"],
+        auto_expire=auto_expire,
+        poll_interval=poll_interval,
+        release_date=release_date,
+    )
 
 
 def default_auto_expire(
-    release_date: datetime | None,
+    release_date: Optional[datetime],
     buffer: timedelta = DEFAULT_AUTO_EXPIRE_BUFFER,
-) -> datetime | None:
-    """TODO: return `release_date + buffer` as a suggested failsafe
-    default when `release_date` is known. Returns None when
-    release_date is None, in which case the caller must supply
-    auto_expire explicitly — there's no safe default without a
-    reference date.
+) -> Optional[datetime]:
+    """Return `release_date + buffer` as a suggested failsafe default
+    when `release_date` is known. Returns None when release_date is
+    None, in which case the caller must supply auto_expire explicitly --
+    there's no safe default without a reference date.
     """
-    raise NotImplementedError
+    if release_date is None:
+        return None
+    return release_date + buffer

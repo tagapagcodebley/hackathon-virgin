@@ -8,6 +8,9 @@ deploy/config.ps1
 
 # Local deployment state (persisted between polls, machine-specific)
 deploy/state.txt
+deploy/advanced_memory.json
+deploy/simulated_submissions.log
+advanced/my_watch_config.json
 *.log
 
 # Python

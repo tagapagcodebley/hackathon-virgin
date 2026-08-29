@@ -10,13 +10,14 @@
 #                advanced/deploy/README.md for why this is one of
 #                advanced's own engineering-quality improvements).
 #
-# -Source/-Notify/-Keyword are deliberately left unresolved here unless
-# you pass them explicitly. Leave them out and run_watcher.ps1 resolves
-# them itself from config.ps1 on every poll -- so pointing the task at
-# your own real page (and match phrase, for baseline) is just filling in
-# config.ps1 once (see config.example.ps1), and editing it later takes
-# effect on the task's next run without re-registering. Pass them here
-# only to force a specific value for this one registration.
+# -Source/-Notify/-Keyword/-ConfigPath are deliberately left unresolved
+# here unless you pass them explicitly. Leave them out and
+# run_watcher.ps1 resolves them itself from config.ps1 on every poll --
+# so pointing the task at your own real page (and match phrase for
+# baseline, or config file for advanced) is just filling in config.ps1
+# once (see config.example.ps1), and editing it later takes effect on
+# the task's next run without re-registering. Pass them here only to
+# force a specific value for this one registration.
 #
 # -IntervalMinutes is different: it's baked into the Scheduled Task
 # trigger itself, so it has to be decided now. Falls back to
@@ -29,6 +30,7 @@ param(
     [ValidateSet("console", "email")]
     [string]$Notify,
     [string]$Keyword,
+    [string]$ConfigPath,
     [int]$IntervalMinutes = 15
 )
 
@@ -57,6 +59,9 @@ if ($PSBoundParameters.ContainsKey('Notify')) {
 if ($PSBoundParameters.ContainsKey('Keyword')) {
     $watcherArgs += " -Keyword `"$Keyword`""
 }
+if ($PSBoundParameters.ContainsKey('ConfigPath')) {
+    $watcherArgs += " -ConfigPath `"$ConfigPath`""
+}
 
 if ($Solution -eq "advanced") {
     $vbsPath = Join-Path $repoRoot "advanced\deploy\run_hidden.vbs"
@@ -82,7 +87,11 @@ $trigger.Repetition.StopAtDurationEnd = $false
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
-$sourceDescription = if ($PSBoundParameters.ContainsKey('Source')) { $Source } else { "its config.ps1-configured source" }
+if ($Solution -eq "advanced") {
+    $sourceDescription = if ($PSBoundParameters.ContainsKey('ConfigPath')) { $ConfigPath } else { "its config.ps1-configured watch_config" }
+} else {
+    $sourceDescription = if ($PSBoundParameters.ContainsKey('Source')) { $Source } else { "its config.ps1-configured source" }
+}
 
 try {
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `

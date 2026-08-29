@@ -1,7 +1,6 @@
-"""Drafts a structured reservation request from a confirmed, verified
-detection. Drafting only — never submits; see approval.py for the gate.
-
-Stage 1 scaffolding only.
+"""Drafts a structured, human-reviewable next step from a confirmed,
+verified detection. Drafting only -- never submits; see approval.py for
+the gate.
 """
 
 from __future__ import annotations
@@ -14,18 +13,29 @@ from .detector import Detection
 
 @dataclass
 class DraftedAction:
-    """TODO: the structured next step ready for human review — generic
-    across watch domains (a reservation request for the demo scenario;
-    could be something else for a different `watch_for`). Should capture
-    what was found, which part of `watch_for` it matched, and why (for
-    the approval prompt and for the trajectory record). Never includes an
-    automated hold/submit — see PROBLEM_STATEMENT.md's "On automated
-    holds" section; that step always waits for a live human approval.
-    """
+    watch_for: str
+    matched_snippet: str
+    reasoning: str
+    source: str
+
+    def format_for_human(self) -> str:
+        return (
+            f"Sauron found a match for: {self.watch_for}\n\n"
+            f"Page: {self.source}\n"
+            f"Why: {self.reasoning}\n\n"
+            f"Matched text:\n{self.matched_snippet}\n\n"
+            "Nothing has been submitted anywhere -- this is a draft "
+            "waiting for your approval before any (simulated) next step."
+        )
 
 
 def draft(detection: Detection, config: WatchConfig) -> DraftedAction:
-    """TODO: turn a confirmed detection into a structured, human-reviewable
-    next step. No network call here — drafting only.
+    """Turn a confirmed detection into a structured, human-reviewable
+    draft. No network call here -- drafting only.
     """
-    raise NotImplementedError
+    return DraftedAction(
+        watch_for=config.watch_for,
+        matched_snippet=detection.snippet,
+        reasoning=detection.reasoning,
+        source=config.source,
+    )

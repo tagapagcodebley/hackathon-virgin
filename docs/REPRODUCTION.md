@@ -11,16 +11,25 @@ cases referenced below.
 - **OS / runtime:** Python 3.14 (developed/tested on 3.14.3; anything
   3.10+ should work — no version-specific syntax used).
 - **Dependencies:** `baseline/requirements.txt` (`requests`, `pytest`);
-  `notifications.py` (repo root, shared by baseline/advanced) is stdlib
-  only, no extra install; `advanced/requirements.txt` — TODO, lands in
-  Stage 3.
+  `advanced/requirements.txt` (`requests`, `anthropic`, `pytest`);
+  `notifications.py`/`fetching.py` (repo root, shared by both) are
+  stdlib-only, no extra install.
 - **Data:** fully synthetic — the fixtures in `eval/fixtures/` (a fake
   tennis-court reservation portal, "Riverside Park Tennis Courts"). No
-  live network calls, no real booking site, no credentials required to
-  run this project.
-- **Approx runtime:** baseline test suite + eval run: under 1 second.
-- **Approx cost:** $0 for baseline (no API calls). Advanced solution
-  will make LLM calls per poll — cost reported once Stage 3 lands.
+  live network calls to a real booking site, ever. No credentials
+  required for baseline or for the test suites; advanced's real
+  (non-`--fake`) run needs `ANTHROPIC_API_KEY` — see "Approx cost" below.
+- **Approx runtime:** either test suite: under 3 seconds. A real
+  (non-`--fake`) advanced eval run: a few seconds per case (one Anthropic
+  API round-trip per `classify()` call — see below).
+- **Approx cost:** $0 for baseline and for both test suites (no API
+  calls). Advanced's real eval run makes one `claude-haiku-4-5` call per
+  case for detection, plus one more for each positive detection to
+  verify — 15 calls total for the actual 12-case run (confirmed, see
+  `CHANGELOG.md`), well under a cent at Haiku 4.5 pricing. `--fake` mode
+  (see below) runs the same pipeline for $0 against a stubbed
+  classifier, useful for a quick sanity check but NOT the measured
+  result.
 
 ## 1. Setup
 
@@ -31,7 +40,10 @@ cd micro1-hackathon
 
 # install deps
 pip install -r baseline/requirements.txt
-# pip install -r advanced/requirements.txt  # Stage 3
+pip install -r advanced/requirements.txt
+
+# only needed to run advanced for real (not --fake, not its test suite)
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ## 2. Run the baseline
@@ -60,25 +72,51 @@ python -m pytest baseline/ test_notifications.py -v
 ## 3. Run the advanced solution
 
 ```bash
-# TODO: exact command, e.g.
-# python -m advanced.watcher --config advanced/watch_config.example.json --state /tmp/state.json
+python -m advanced.watcher --config advanced/watch_config.example.json --state /tmp/sauron-adv-state.txt --memory /tmp/sauron-adv-memory.json
 ```
 
-**Expected output:** TODO — describe the drafted reservation request held
-for approval, and what approving/declining does. Lands in Stage 3.
+**Expected output:** with the shipped example config (which points at
+the static `eval/fixtures/00-baseline.html` — a "fully booked" page that
+never changes), the first poll fetches it, finds no match, and prints
+nothing; run it again and nothing happens either, since the page hasn't
+changed. To see a real detection, drafted action, and approval prompt,
+point `--config` at a copy of the example with `"source"` changed to
+`eval/fixtures/05-real-match.html` — Sauron will call the Anthropic API,
+correctly detect the match, verify it with a second call, print the
+alert, and (in an interactive terminal) prompt
+`Approve and simulate-submit? [y/N]`. Approving appends a JSON record to
+`deploy/simulated_submissions.log` — never a real network call anywhere.
+Run non-interactively (e.g. under a Scheduled Task) and it notifies but
+declines automatically, the same honest limit baseline has — see
+`advanced/approval.py`.
+
+Run the full test suite (all fakes, no API key needed, no cost):
+
+```bash
+python -m pytest advanced/ -v
+```
+
+**Expected output:** `51 passed`.
 
 ## 4. Run the evaluation
 
 ```bash
 python -m eval.run_eval --solution baseline
+python -m eval.run_eval --solution advanced          # real Anthropic API calls, needs the key, small cost
+python -m eval.run_eval --solution advanced --fake    # $0, pipeline sanity check only -- see eval/run_eval.py's docstring
+python -m eval.run_eval --solution both               # both reports back to back
 ```
 
-**Expected output:** a per-case classification table plus
+**Expected output for baseline:** a per-case classification table plus
 `TP=3  FP=5  TN=4  FN=0`, `Precision: 0.38`, `Recall: 1.00`,
-`False-positive rate: 0.56` — see
-[`../CHANGELOG.md`](../CHANGELOG.md) for the full baseline entry. Once
-Stage 3 lands, `--solution both` will print the same table for advanced
-alongside baseline for a direct comparison.
+`False-positive rate: 0.56` — see [`../CHANGELOG.md`](../CHANGELOG.md)
+for the full entry. **Expected output for advanced (real, not `--fake`):**
+`TP=3  FP=0  TN=9  FN=0`, `Precision: 1.00`, `Recall: 1.00`,
+`False-positive rate: 0.00` — see `../CHANGELOG.md`'s "Real advanced
+numbers" entry for the full run, including sample reasoning from the
+model. `--fake` mode gives a different, lower-precision result (a $0
+pipeline sanity check against a deliberately-imperfect stub, not the
+measured result — see `eval/run_eval.py`'s docstring).
 
 ## 5. Deploy it for real (optional)
 
