@@ -13,7 +13,10 @@ from .action_drafter import DraftedAction
 
 
 def request_approval(action: DraftedAction) -> bool:
-    """TODO: present the drafted action to a human and return whether they
+    """TODO: alert the human that a drafted action is waiting (reuse
+    ../notifications.py — the same console/email channels baseline
+    already uses, don't build a second notification path), then present
+    the drafted action for explicit approval and return whether they
     approved it. In the demo this can be a CLI prompt; in eval it's an
     injected fake, per CLAUDE.md's testing rule.
     """

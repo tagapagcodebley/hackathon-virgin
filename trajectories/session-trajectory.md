@@ -386,3 +386,409 @@ existed to inherit it: `auto_expire` (failsafe, no timing role) and
 `release_date` (urgency signal, drives adaptive polling) are now
 consistently distinct fields across `PROBLEM_STATEMENT.md`,
 `eval/CASES.md`, and every touched code/test scaffold file.
+
+---
+
+## Stage 1 → Stage 2 (lock in, commit, implement baseline)
+
+### Instructions given (verbatim, user message)
+
+> let's lock in Stage 1, git commit, then start Stage 2
+
+### What the agent did — locking in Stage 1
+
+1. Ran `git status`, confirmed everything staged was Stage 1 scaffolding
+   (plus one pre-existing uncommitted change to `trajectories/README.md`
+   from the earlier pre-kickoff session, folded in as legitimate prior
+   work) — no secrets, no build artifacts.
+2. Committed as `ecc6b61`, "Stage 1: scaffold Sauron, a generic
+   watch-and-act agent" (23 files, all placeholder/TODO code plus the
+   problem statement, eval case list, and rulebook PDF). Did not push —
+   not asked to.
+
+### What the agent did — Stage 2 (real baseline implementation)
+
+1. Designed the concrete fixture scenario: a synthetic "Riverside Park
+   Tennis Courts" booking-calendar page. Fixed the actual watch config —
+   `watch_for` (advanced, full sentence): "a Saturday 9-11am court
+   booking for 4 people"; `keyword` (baseline, short literal phrase, a
+   separate/narrower input than `watch_for` — see reasoning in
+   `baseline/README.md`): "slot available".
+2. Wrote 14 real HTML fixtures in `eval/fixtures/` covering content-diff
+   cases 01–12 from `eval/CASES.md` (steady state, 3 decoys, real match,
+   negation, 3 criteria near-misses, ambiguous FAQ mention, a duplicate
+   pair, and a flappy open/closed pair).
+3. Implemented `baseline/watcher.py` for real (no more
+   `NotImplementedError`): `fetch_page_state` (local file or HTTP),
+   `has_changed` (raw text compare), `matches_watch_for` (naive
+   case-insensitive substring check against `keyword`), `notify`
+   (prints a readable snippet — added `_visible_text()` to strip HTML
+   tags after the first CLI run showed a wall of markup), and `run`
+   (persists state to a file, catches fetch errors without crashing).
+   Added a `--source`/`--state`/`--keyword` CLI entry point.
+4. Rewrote `baseline/test_watcher.py` with real test bodies (no more
+   skips) against the fixtures — one test per case, plus fetch-error and
+   end-to-end state-persistence tests. Added `baseline/__init__.py` so
+   `from baseline.watcher import ...` resolves under pytest.
+5. Implemented `eval/run_eval.py`'s baseline path for real: an embedded
+   case table (fixture pair + ground-truth label) covering cases 01–11,
+   computing precision/recall/false-positive-rate; the advanced path
+   still prints "not implemented yet" pending Stage 3.
+6. Ran `pip install -r baseline/requirements.txt` then
+   `python -m pytest baseline/ -v` — **14/14 passed**. Ran
+   `python -m eval.run_eval --solution baseline` —
+   `TP=3 FP=5 TN=4 FN=0`, precision 0.38, recall 1.00, false-positive
+   rate 0.56, exactly matching the predicted failure shape (perfect
+   recall, poor precision on negation/near-miss/FAQ cases).
+7. Verified the exact documented CLI command
+   (`python -m baseline.watcher --source ... --state ...`) end to end;
+   caught a real (cosmetic) bug in the process — the notification dumped
+   raw HTML markup and an em-dash garbled under the Windows console's
+   default codepage — fixed with `sys.stdout.reconfigure(encoding="utf-8")`
+   and a `_visible_text()` tag-stripping helper so notifications read as
+   plain text.
+8. Updated docs to match reality: `CHANGELOG.md` (new entry with the
+   real eval numbers, evidence command, and the explicit target for
+   Stage 3 — hold recall at 1.00 while raising precision well above
+   0.38), `docs/REPRODUCTION.md` (real Python version, real commands,
+   real expected output for baseline; advanced section still TODO),
+   `baseline/README.md` (real numbers, and the `keyword`-vs-`watch_for`
+   design rationale), `eval/CASES.md` ("Fixed watch config" section
+   filled in with the real values; Status section updated), root
+   `README.md` (status line, real Quickstart commands).
+
+### Human checkpoint
+
+Stopping here per `CLAUDE.md`'s stage-gate rule — not self-advancing to
+Stage 3 even though the next step (advanced) is obvious. Presenting the
+Stage 2 result to the user for validation, and confirming whether to
+commit Stage 2 before starting Stage 3.
+
+### Outcome
+
+Stage 1 committed (`ecc6b61`). Stage 2 (baseline) fully implemented and
+verified: 14/14 tests pass, the CLI runs end-to-end exactly as
+documented, and the eval run produces the expected "perfect recall, poor
+precision" failure shape that Stage 3's advanced solution is meant to
+fix. Nothing about the advanced solution has been implemented yet.
+
+---
+
+## Stage 2 (continued): real deployment, not just an eval harness
+
+### Instructions given (verbatim, user message)
+
+> why doesn't baseline contain the notification parts? windows register
+> task? readme deployment instructions? it should still be a deployable
+> standalone solution right?
+
+### What the agent did
+
+Confirmed this was a genuine gap, not an intentional scope choice: what
+Stage 2 had built so far was detection logic plus an eval harness — the
+`notify()` function only ever `print()`ed to a console someone would
+have to be actively watching, and there were no scripts or docs for
+running it unattended. That doesn't actually solve the stated bottleneck
+("they can't watch the page 24/7") even at the baseline tier.
+
+1. Read `C:\Users\bley\tennis-booker`'s `secrets.example.ps1`,
+   `run_watcher.ps1`, `register_task.ps1`, `.gitignore`, and the email
+   section of `watch_courts.py` to confirm the exact established pattern
+   (Gmail SMTP_SSL on port 465 with an App Password;
+   `TENNIS_GMAIL_USER`/`TENNIS_GMAIL_APP_PASSWORD`/`TENNIS_NOTIFY_TO` env
+   vars sourced from a gitignored `secrets.ps1`; a `run_hidden.vbs`
+   wrapper so a Scheduled Task doesn't flash a console window) — CLAUDE.md
+   requires reusing this exact pattern for anything needing credentials.
+2. Added `notifications.py` (repo root, shared by baseline and, from
+   Stage 3, advanced): `console_notify` (default, no credentials) and
+   `email_notify` (real Gmail SMTP, `SAURON_`-prefixed env vars mirroring
+   tennis-booker's naming convention), plus a `NOTIFIERS` lookup dict for
+   the CLI. Added `test_notifications.py` — tests `email_notify`'s
+   missing-credentials error path for real, and its SMTP call via a
+   monkeypatched `smtplib.SMTP_SSL` (never real network/credentials).
+3. Rewired `baseline/watcher.py`'s `notify()`/`run()` to take an
+   injectable `notifier` callable (default `console_notify`), and added
+   `--notify {console,email}` to the CLI. Added a test proving the
+   notifier is genuinely pluggable (nothing hits stdout when a fake
+   notifier is injected).
+4. Built `deploy/` — `secrets.example.ps1`, `run_watcher.ps1` (loads
+   secrets if present, resolves repo root, invokes
+   `python -m {baseline|advanced}.watcher`, parameterized so it already
+   supports switching to advanced once Stage 3 exists),
+   `register_task.ps1` (Windows Scheduled Task registration, forwards
+   params through `run_hidden.vbs`), `run_hidden.vbs` (adapted from
+   tennis-booker's to forward CLI arguments, which the original didn't
+   need), and `README.md` documenting one-off runs, real email setup,
+   unattended registration, and the caveat about pointing `-Source` at a
+   real site (ToS check, same reasoning already written for the
+   automated-holds decision).
+5. Updated `.gitignore` (`deploy/secrets.ps1`, `deploy/state.txt`,
+   `*.log`) — none of the existing patterns matched `secrets.ps1`.
+6. Verified everything for real rather than assuming: parse-checked both
+   `.ps1` scripts via `[System.Management.Automation.Language.Parser]::ParseFile`
+   (no execution); ran `deploy\run_watcher.ps1` end-to-end against a
+   matching fixture with `-Notify console` — fired a real notification
+   through the full wrapper (repo-root resolution, secrets-skip logic,
+   python invocation) with exit code 0; ran it again with `-Notify email`
+   and no `secrets.ps1` present — failed with the intended clear error
+   message and exit code 1, not a stack trace.
+7. Deliberately did **not** run `register_task.ps1` for real — that
+   registers a standing background automation on the user's own machine,
+   which the user has always done themselves (tennis-booker's task was
+   "registered by the user" per prior memory). Left it ready to run, not
+   auto-executed.
+8. Updated docs to match: `baseline/README.md` (new "Deployment"
+   section), `docs/REPRODUCTION.md` (corrected exact stdout text and test
+   count — 14 → 18 — after the notifier rewrite changed the print format;
+   added a "Deploy it for real (optional)" section), root `README.md`
+   (status line, Quickstart command), `CHANGELOG.md` (new entry —
+   evidence: the user's question; change: notifications.py + deploy/;
+   result: verified end-to-end, 18/18 passing, detection numbers
+   unchanged since this was a delivery-layer gap not a detection one),
+   `advanced/approval.py` (one-line note that Stage 3's human-approval
+   alert should reuse `notifications.py` rather than building a second
+   notification path).
+
+### Human checkpoint
+
+Still Stage 2 — this was filling a real gap the user caught in what was
+presented as "done," not starting Stage 3. Presenting the fix back to
+the user; Stage 2 commit still pending their go-ahead (asked at the end
+of the previous entry, not yet answered).
+
+### Outcome
+
+Baseline is now an actually-deployable standalone tool, not just a
+detection-logic-plus-eval-harness: real email delivery, a working
+Windows Scheduled Task path, and documentation a judge or the user could
+follow from a clean environment — verified end-to-end, not just written.
+18/18 tests pass. Detection numbers (precision 0.38 / recall 1.00 / FP
+rate 0.56) unchanged, as expected, since this addition was entirely at
+the delivery layer.
+
+---
+
+## Stage 2 (continued): hidden-window wrapper moved to advanced; doc scrub
+
+### Instructions given (verbatim, user message)
+
+> i actually want the vbs wrapper to be part of the advanced solution
+> since that was a real quality-of-life improvement. also, READMEs
+> messaging should be intended for users (and judges more importantly)
+> who do not have context on what my projects have been. so referencing
+> anything i've done in the past should be reworded. what do you think?
+
+### What the agent did
+
+Agreed with both points and implemented rather than just discussing:
+the previous commit had made the hidden-window wrapper shared
+infrastructure (`-Solution baseline|advanced` on one `deploy/run_hidden.vbs`),
+which diluted a real, demonstrable engineering-quality difference into
+something both solutions got for free — and several docs referenced the
+author's unrelated local projects (`tennis-booker`, `practice2/`) in a
+way that assumes context a judge or user wouldn't have.
+
+1. **Restructuring:** created `advanced/deploy/` — moved
+   `run_hidden.vbs` there (fixed its path resolution: now two levels
+   deep, so it locates `../../deploy/run_watcher.ps1` via
+   `GetParentFolderName` twice), and added `advanced/deploy/README.md`
+   explaining why this specific piece is an advanced-only "meaningful
+   improvement... in engineering quality" per the rulebook, not shared
+   infra. Deleted the old shared `deploy/run_hidden.vbs`.
+2. Rewrote `deploy/register_task.ps1` so `-Solution` changes *how* the
+   task runs, not just what: `baseline` now invokes PowerShell directly
+   (a console window visibly flashes every poll — an honest reflection
+   of baseline's "no cleverness" positioning), `advanced` routes through
+   `advanced/deploy/run_hidden.vbs` (silent). Task names now
+   solution-suffixed (`SauronWatcher-baseline` / `-advanced`) so both
+   could coexist.
+3. Verified the new vbs path resolution for real: invoked it directly
+   via `wscript.exe` (not through a registered task) against a matching
+   fixture — resolved paths correctly from its new two-levels-deep
+   location, ran the poll, wrote state, exit code 0. Parse-checked the
+   rewritten `register_task.ps1`.
+4. Noticed and documented a real consequence of the restructuring while
+   writing it up: hidden execution only makes sense paired with
+   `-Notify email`, since a hidden window's stdout is invisible — added
+   that caveat to both `deploy/README.md` and
+   `advanced/deploy/README.md` rather than leaving it as a silent trap.
+5. **Doc scrub:** grepped the whole repo for `tennis-booker` and
+   `practice2`/`practice/` across every `.md` file. Reworded every
+   judge/user-facing hit — `README.md` (dropped the practice-folder
+   mention entirely, since those folders are gitignored and invisible to
+   a judge cloning the repo anyway), `PROBLEM_STATEMENT.md` (two spots —
+   the tennis-court domain-familiarity aside, and the auto_expire
+   motivating scenario, both reworded to stand on their own without
+   naming another project), `baseline/README.md`, `deploy/README.md`,
+   `docs/REPRODUCTION.md`, `CHANGELOG.md` (both entries). Deliberately
+   left `CLAUDE.md` (agent process instructions, not product messaging)
+   and `trajectories/session-trajectory.md` (the required agent-process
+   deliverable, where naming a source project is honest transparency,
+   not an assumed-context problem) unchanged — the user's ask was
+   specifically about README-style messaging.
+6. Added a new `CHANGELOG.md` entry for this restructuring (evidence:
+   the user's feedback, quoted; change: what moved; result: verified
+   path resolution, and why this is now a real demo-video-visible
+   contrast rather than a hidden implementation detail).
+7. Re-ran the full test suite — still 18/18 passing, confirming the
+   restructuring didn't touch any tested code path (it was
+   deployment-script-only).
+
+### Human checkpoint
+
+Still Stage 2. Presenting the restructuring and scrub back to the user;
+the same two questions from before this detour remain open: does this
+match what they wanted, and is Stage 2 ready to commit.
+
+### Outcome
+
+The hidden-window wrapper is now a real, attributable advanced-solution
+improvement instead of shared infrastructure both solutions got for
+free — and every judge/user-facing doc stands on its own without
+requiring knowledge of the author's other projects, while the
+process-transparency mentions in `trajectories/` (where that context is
+actually appropriate) were left intact.
+
+---
+
+## Stage 2 (continued): config.ps1 for the user's real watch target
+
+### Instructions given (verbatim, user message)
+
+> shouldn't the editable args also be secrets so that the user can
+> point it to whatever page they need watched when they register the
+> task?
+
+### What the agent did
+
+Agreed this was a real gap: `-Source`/`-Notify`/`-IntervalMinutes` had
+to be retyped as CLI args on every registration, easy to forget, not
+persisted, and risked someone hardcoding a real personal target URL
+into a tracked file out of impatience. Distinguished the ask from
+literally merging into `secrets.ps1` — that file's name and existing
+convention mean "credentials," so mixing in a non-sensitive personal
+target would confuse a future reader — and instead added a sibling
+gitignored file with the identical dot-sourced mechanism, kept
+conceptually separate.
+
+1. Added `deploy/config.example.ps1` (committed template) /
+   `deploy/config.ps1` (gitignored, added to `.gitignore` alongside
+   `secrets.ps1`) — `$env:SAURON_SOURCE`, `$env:SAURON_NOTIFY`,
+   `$env:SAURON_INTERVAL_MINUTES`.
+2. Updated `deploy/run_watcher.ps1`: dot-sources `config.ps1` if
+   present, then resolves `$Source`/`$Notify` from it via
+   `$PSBoundParameters.ContainsKey(...)` checks — an explicit CLI arg
+   always wins, otherwise config.ps1's value, otherwise the original
+   hardcoded fixture default. Moved this resolution *before* the
+   secrets.ps1/email check so a `$Notify` value coming from config.ps1
+   (not just from the CLI) still triggers the friendly
+   missing-credentials error instead of failing deeper inside Python.
+3. Redesigned `deploy/register_task.ps1` rather than just mirroring the
+   same pattern: realized baking a resolved `-Source` into the
+   registered task's action string at registration time would mean
+   editing `config.ps1` later wouldn't take effect without
+   re-registering. Changed so `-Source`/`-Notify` are only forwarded
+   into the task's action if explicitly passed *to register_task.ps1
+   itself*; left unset, the task's action omits them entirely and
+   `run_watcher.ps1` resolves them fresh from `config.ps1` on every
+   single poll. `-IntervalMinutes` is the one value still resolved at
+   registration time (from config.ps1 if not overridden), since it's
+   genuinely baked into the Scheduled Task trigger and can't be
+   deferred.
+4. Verified for real: wrote a temporary `deploy/config.ps1` pointing at
+   a matching fixture, ran `.\deploy\run_watcher.ps1` with zero
+   arguments — correctly resolved `Source`/`Notify` from config and
+   fired a real notification; ran it again with an explicit `-Source`
+   pointing at a non-matching fixture — confirmed the CLI value won
+   over config.ps1 (stayed silent, as expected for that fixture).
+   Removed the temporary config.ps1 afterward. Separately verified the
+   `$PSBoundParameters` binding logic used in `register_task.ps1` with a
+   throwaway scratch script covering all three call shapes (no args,
+   `-Source` only, `-Solution`/`-IntervalMinutes` only) before trusting
+   it in the real file — confirmed `BoundSource`/`BoundNotify` correctly
+   read `False` when omitted rather than erroring on the unset,
+   no-default `[ValidateSet]` string params.
+5. Updated `deploy/README.md` with a new "Pointing it at your own real
+   page (config.ps1)" section, and updated the "Running unattended"
+   examples to show the now-possible bare `.\deploy\register_task.ps1
+   -Solution baseline` form alongside the explicit-override form.
+6. Re-ran the full test suite (still 18/18 — this was deployment-script
+   only) and checked `git status` to confirm no test artifacts
+   (`config.ps1`, `state.txt`) were left behind.
+
+### Human checkpoint
+
+Still Stage 2. Three rounds of user-caught gaps now folded in
+(deployment/notifications, vbs-to-advanced attribution, config.ps1) —
+presenting back to the user; commit still pending their go-ahead.
+
+### Outcome
+
+Registering a scheduled task (or running a one-off poll) against a real,
+personal page no longer requires typing it as a command-line argument or
+risking it landing in a tracked file: `config.ps1` holds it, gitignored,
+separate from credentials, resolved fresh on every poll so it can be
+edited without re-registering. Verified end-to-end, not just written.
+
+---
+
+## Stage 2 (continued): keyword was missing from the deploy layer entirely
+
+### Instructions given (verbatim, user message)
+
+> shouldn't keyword also be in the configs file?
+
+### What the agent did
+
+Checked `deploy/run_watcher.ps1` against `baseline/watcher.py`'s actual
+CLI and found a real gap, not just a missing config option: the
+PowerShell wrapper never exposed `--keyword` at all — it silently
+fell back to Python's own hardcoded default (`"slot available"`) no
+matter what, so there was no way to deploy against a real page with a
+different match phrase except bypassing the wrapper scripts and calling
+`python -m baseline.watcher` directly.
+
+1. Added `-Keyword` to both `deploy/run_watcher.ps1` and
+   `deploy/register_task.ps1`, following the exact precedence pattern
+   already established for `Source`/`Notify`: explicit CLI arg > `config.ps1`'s
+   `$env:SAURON_KEYWORD` > Python's own default.
+2. One deliberate care point: `$Keyword` has no PowerShell-side default
+   (stays unset/empty if neither CLI nor config.ps1 sets it), and
+   `run_watcher.ps1` only appends `--keyword $Keyword` to the Python
+   invocation when `$Keyword` is truthy — an empty string would've been
+   passed straight through as `--keyword ""`, and an empty substring
+   matches every page (`"" in text` is always `True`), which would have
+   been a silent, serious false-positive bug. Switched the Python
+   invocation from string interpolation to an args array
+   (`$pythonArgs = @(...); & $python @pythonArgs`) to make the
+   conditional-append clean.
+3. Also scoped `Keyword` correctly to baseline only — advanced reasons
+   over the full `watch_for` sentence, not a short keyword, so the flag
+   is only appended when `$Solution -eq "baseline"`.
+4. Verified all three precedence cases for real: (a) no config.ps1, no
+   `-Keyword` → falls back to Python's default, fires on a matching
+   fixture; (b) `config.ps1` sets `SAURON_KEYWORD="in stock"` (not
+   present on the fixture) → correctly stays silent, proving the value
+   actually reaches Python rather than being silently dropped; (c)
+   explicit `-Keyword "slot available"` on the CLI overrides config.ps1's
+   `"in stock"` → fires again. Cleaned up the temporary `config.ps1`
+   afterward.
+5. Updated `deploy/config.example.ps1` (added `SAURON_KEYWORD`, noted
+   baseline-only) and `deploy/README.md`'s config section.
+6. Re-ran the full test suite (still 18/18) and confirmed `git status`
+   showed no leftover test artifacts.
+
+### Human checkpoint
+
+Still Stage 2. Four rounds of user-caught gaps now folded in
+(deployment/notifications, vbs-to-advanced attribution, config.ps1,
+keyword). Commit still pending the user's go-ahead.
+
+### Outcome
+
+`deploy/`'s config surface now matches what `baseline/watcher.py`'s CLI
+actually supports — nothing silently unreachable through the wrapper
+scripts. Caught and fixed a real would-be bug (empty-string keyword
+matching everything) before it could ship, by testing the negative case
+(a config'd keyword absent from the fixture) rather than only the happy
+path.

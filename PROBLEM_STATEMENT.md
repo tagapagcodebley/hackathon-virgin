@@ -16,9 +16,9 @@ Anyone waiting on a rare, unpredictable change on a page that offers no
 alert of its own: a slot opening on a public tennis-court reservation
 portal, a DMV/visa appointment, a campsite permit, concert tickets going
 on sale, a restock. Demoed here against a synthetic public tennis-court
-reservation portal, because it's a domain the author has direct, lived
-experience with (see the `tennis-booker` credential pattern referenced in
-`CLAUDE.md`) — but the engine itself is generic: `source` (what page),
+reservation portal — a domain the author has direct, lived experience
+with, so the failure modes below are drawn from a real pain point, not
+guessed at. The engine itself is generic: `source` (what page),
 `watch_for` (a plain-language description of the condition), `auto_expire`
 (how long to keep watching), and `poll_interval` (how often) are all
 user-supplied config, not hardcoded to booking.
@@ -57,12 +57,12 @@ plain-language, agentic watcher can close:
 
 ### Auto-expire vs. release date — two different dates, not one
 
-Motivated directly by this project's own dry run: the `practice2/` page
-watcher needed to eventually stop even if nobody remembered to cancel
-it, once its purpose was clearly over. That's `auto_expire`'s only job —
-a **failsafe unregister date**, decoupled from any timing logic. It
-exists so a forgotten watcher doesn't poll forever, not to signal
-anything about when the awaited event is likely.
+A real watcher needs to eventually stop even if nobody remembers to
+cancel it — otherwise it just polls forever once its purpose is clearly
+over. That's `auto_expire`'s only job — a **failsafe unregister date**,
+decoupled from any timing logic. It exists so a forgotten watcher
+doesn't poll forever, not to signal anything about when the awaited
+event is likely.
 
 The field that actually drives urgency is a separate, optional
 `release_date`: the user's best guess of when the watched-for condition
@@ -111,6 +111,11 @@ already-seen match.
   not just a notification.
 - **Human approval gate:** the drafted action is held for explicit human
   approval before a *simulated* submit call ever runs.
+- **Deployment quality:** running unattended, advanced polls with no
+  visible window at all, versus baseline's plainly-flashing console —
+  see `advanced/deploy/README.md`. A small thing, but a real,
+  demonstrable engineering-quality difference, and one the rulebook
+  explicitly counts as a valid axis for "meaningful improvement."
 
 ### On automated holds (ground rule 04)
 

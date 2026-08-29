@@ -3,13 +3,12 @@
 > The eye that watches so you don't have to. Solo submission for the
 > [micro1 Frontier Engineering Challenge 2026](https://www.hackerearth.com/community/challenges/hackathon/micro1-frontier-engineering-challenge-2026/).
 
-**Status:** 🚧 Stage 1 (Scaffolding) — problem chosen, folders/placeholders
-in place, no real implementation yet. Two full dry runs of this repo's
-stage-gated process (scaffold → basic → advanced → finalize, see
-[`CLAUDE.md`](CLAUDE.md)) are complete in gitignored `practice/` and
-`practice2/` folders — not part of this submission. Running trajectory for
-this submission:
-[`trajectories/session-trajectory.md`](trajectories/session-trajectory.md).
+**Status:** 🚧 Stage 2 (Baseline) — baseline implemented and passing
+(18/18 tests; precision 0.38 / recall 1.00 / false-positive rate 0.56 —
+see [`CHANGELOG.md`](CHANGELOG.md)), and deployable standalone (real
+email notifications + Windows Scheduled Task — see
+[`deploy/README.md`](deploy/README.md)). Advanced solution not started
+yet. Full process log: [`trajectories/session-trajectory.md`](trajectories/session-trajectory.md).
 Full problem framing: [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md).
 
 ## The problem
@@ -59,7 +58,9 @@ This repo contains two solutions, per the competition rules:
 See [`docs/REPRODUCTION.md`](docs/REPRODUCTION.md) for full setup and run instructions from a clean environment.
 
 ```bash
-# placeholder — fill in once the real commands exist
+pip install -r baseline/requirements.txt
+python -m pytest baseline/ test_notifications.py -v
+python -m eval.run_eval --solution baseline
 ```
 
 ## Improvement changelog

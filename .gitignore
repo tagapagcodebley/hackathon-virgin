@@ -3,6 +3,12 @@
 .env.*
 *.key
 *credentials*
+deploy/secrets.ps1
+deploy/config.ps1
+
+# Local deployment state (persisted between polls, machine-specific)
+deploy/state.txt
+*.log
 
 # Python
 __pycache__/

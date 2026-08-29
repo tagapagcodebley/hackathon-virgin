@@ -6,13 +6,24 @@ Same fixture sequence and same `WatchConfig` (source, `watch_for`,
 content-diff case below becomes one fixture file in `fixtures/` (built in
 Stage 2/3) named `NN-slug.html` matching the ID here.
 
-**Fixed watch config for this run** (see `advanced/criteria.py`): TODO —
-a concrete `watch_for` string and matching fixture content, defined once
-fixtures are written so config and fixtures agree. Sketch:
-`watch_for: "a Saturday 9-11am court booking for 4 people"`,
-`release_date` unset (no announced opening date for a public court —
-polling stays at the fixed base rate for this scenario; case 14 below
-uses a separate config with `release_date` set to exercise tightening).
+**Fixed watch config for this run** (see `advanced/criteria.py`, and
+`eval/fixtures/` for the actual fixture content):
+
+- `source`: "Riverside Park Tennis Courts" booking calendar (synthetic).
+- `watch_for` (advanced, full sentence): `"a Saturday 9-11am court
+  booking for 4 people"`.
+- `keyword` (baseline, short literal phrase — see
+  [`../baseline/README.md`](../baseline/README.md) for why baseline gets
+  a different, narrower config than advanced): `"slot available"`.
+- `release_date`: unset for this scenario (no announced opening date for
+  a public court — polling stays at the fixed base rate). Case 14 below
+  uses a separate config with `release_date` set to exercise tightening.
+
+Fixture files: `00-baseline.html` is the reference "fully booked" state
+used as `previous` for most diffs; cases 02–10 each supply one `current`
+fixture; case 11 uses `11a-duplicate-match.html` then
+`11b-duplicate-match-variant.html`; case 12 uses
+`12a-flappy-open.html` / `12b-flappy-closed.html`.
 
 ## Content-diff cases (fixture-based)
 
@@ -66,6 +77,9 @@ precision/recall).
 
 ## Status
 
-TODO — this is the Stage 1 case list/spec. Fixture files and `run_eval.py`
-scoring land in Stage 2 (baseline scoring) and Stage 3 (advanced scoring,
-plus the injected-clock harness for cases 13–14).
+Fixtures and `run_eval.py` scoring for cases 01–11 are implemented and
+passing (Stage 2) — see [`../CHANGELOG.md`](../CHANGELOG.md) for the
+baseline result: precision 0.38, recall 1.00, false-positive rate 0.56.
+Case 12 (flappy) is fixture-ready but only exercised at the baseline
+level so far. Advanced scoring and the injected-clock harness for cases
+13–14 land in Stage 3.
