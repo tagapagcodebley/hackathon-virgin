@@ -52,6 +52,19 @@ def test_negation_is_a_documented_false_positive():
     assert matches_watch_for(current) is True
 
 
+def test_recall_gap_is_a_documented_false_negative():
+    """Case 13: a real opening appears, but the page signals it with a
+    new "Book now" link instead of the literal keyword. Baseline's
+    "perfect recall" elsewhere in this suite was only ever an artifact
+    of every real match happening to contain `keyword` — this fixture
+    exposes that it's not a structural guarantee. Documented in
+    PROBLEM_STATEMENT.md, not a bug to fix here (that's exactly the gap
+    advanced closes — see advanced/test_detector.py's equivalent case).
+    """
+    current = load("13-recall-gap.html")
+    assert matches_watch_for(current) is False
+
+
 @pytest.mark.parametrize(
     "fixture",
     ["07-wrong-date.html", "08-wrong-time.html", "09-wrong-party-size.html"],
@@ -115,6 +128,18 @@ def test_run_writes_state_and_notifies_on_real_match(tmp_path, capsys):
     captured = capsys.readouterr()
     assert DEFAULT_KEYWORD in captured.out
     assert Path(state_path).read_text(encoding="utf-8") == load("05-real-match.html")
+
+
+def test_run_creates_missing_parent_directory_for_state_path(tmp_path):
+    """A --state path whose parent directory doesn't exist yet must not
+    crash -- e.g. someone's first run pointing at a fresh subdirectory,
+    or (the bug this guards against) a POSIX-style path like /tmp/... on
+    Windows resolving to a nonexistent drive-root directory instead of
+    raising FileNotFoundError deep inside write_text().
+    """
+    state_path = str(tmp_path / "does-not-exist-yet" / "state.txt")
+    run(str(FIXTURES / "00-baseline.html"), state_path)  # must not raise
+    assert Path(state_path).exists()
 
 
 def test_run_uses_injected_notifier_not_console(tmp_path, capsys):

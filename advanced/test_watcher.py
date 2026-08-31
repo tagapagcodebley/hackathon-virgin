@@ -117,6 +117,36 @@ def test_real_match_declined_does_not_submit(tmp_path):
     assert submit_fn.calls == []
 
 
+# --- Case 13: recall gap -- a real match with zero keyword overlap ---------
+
+
+def test_recall_gap_notifies_and_submits_where_baseline_would_stay_silent(tmp_path):
+    """Case 13: "Book now — 4 players" appears for the Saturday 9-11am
+    row -- a genuine match baseline's keyword check structurally cannot
+    see (no "slot", no "available" anywhere). Confirmed against the real
+    Anthropic API (CHANGELOG.md): advanced correctly fires here, holding
+    recall at 1.00 while baseline's drops to 0.75 on this exact case.
+    """
+    config_path = write_config(tmp_path, "13-recall-gap.html")
+    notifier = Recorder()
+    submit_fn = Recorder()
+
+    run(
+        config_path,
+        str(tmp_path / "state.txt"),
+        str(tmp_path / "memory.json"),
+        classify=const_classify(True, "a new booking link appeared for the matching row"),
+        notifier=notifier,
+        approve_fn=lambda action: True,
+        submit_fn=submit_fn,
+    )
+
+    assert len(notifier.calls) == 1
+    assert len(submit_fn.calls) == 1
+    action = submit_fn.calls[0][0]
+    assert "Book now" in action.matched_snippet
+
+
 # --- Cases 02-04: decoys ---------------------------------------------------
 
 
@@ -310,7 +340,7 @@ def test_flappy_slot_is_declined_after_verification(tmp_path):
     assert notifier.calls == []  # never got far enough to alert the human
 
 
-# --- Case 13: auto_expire failsafe ------------------------------------------
+# --- Case 14: auto_expire failsafe ------------------------------------------
 
 
 def test_expired_watch_never_fetches(tmp_path):
@@ -345,7 +375,28 @@ def test_fetch_error_does_not_crash(tmp_path):
     )
 
 
-# --- Case 14: adaptive polling around release_date, not auto_expire --------
+def test_run_creates_missing_parent_directories_for_state_and_memory(tmp_path):
+    """--state/--memory paths whose parent directories don't exist yet
+    must not crash -- the same class of bug as baseline's equivalent
+    test: a POSIX-style path like /tmp/... resolves to a nonexistent
+    directory on Windows PowerShell instead of the MSYS /tmp git-bash
+    provides, and write_text()/WatcherMemory.save() don't create missing
+    parent directories on their own.
+    """
+    config_path = write_config(tmp_path, "00-baseline.html")
+    state_path = str(tmp_path / "fresh-state-dir" / "state.txt")
+    memory_path = str(tmp_path / "fresh-memory-dir" / "memory.json")
+
+    # A fresh state file means has_changed() is unconditionally True on
+    # this first poll, so detect() -- and therefore classify() -- WILL
+    # be called here, unlike the unchanged-page tests elsewhere in this
+    # file; a non-match keeps the run short.
+    run(config_path, state_path, memory_path, classify=const_classify(False))  # must not raise
+
+    assert Path(state_path).exists()
+
+
+# --- Case 15: adaptive polling around release_date, not auto_expire --------
 
 
 def test_poll_interval_unchanged_when_release_date_unset():

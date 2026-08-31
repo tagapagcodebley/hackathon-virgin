@@ -6,6 +6,7 @@
 deploy/secrets.ps1
 deploy/config.ps1
 VIDEO_GUIDE.md
+DEMO_SCRIPT.md
 
 # Local deployment state (persisted between polls, machine-specific)
 deploy/state.txt
@@ -13,6 +14,11 @@ deploy/advanced_memory.json
 deploy/simulated_submissions.log
 advanced/my_watch_config.json
 *.log
+
+# Scratch directory used by docs/REPRODUCTION.md and DEMO_SCRIPT.md's
+# example commands (a relative path, so it works identically in bash
+# and PowerShell -- see CHANGELOG.md's /tmp/ path-bug entry)
+sauron-run/
 
 # Python
 __pycache__/

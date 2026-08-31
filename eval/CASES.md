@@ -16,12 +16,12 @@ Stage 2/3) named `NN-slug.html` matching the ID here.
   [`../baseline/README.md`](../baseline/README.md) for why baseline gets
   a different, narrower config than advanced): `"slot available"`.
 - `release_date`: unset for this scenario (no announced opening date for
-  a public court — polling stays at the fixed base rate). Case 14 below
+  a public court — polling stays at the fixed base rate). Case 15 below
   uses a separate config with `release_date` set to exercise tightening.
 
 Fixture files: `00-baseline.html` is the reference "fully booked" state
-used as `previous` for most diffs; cases 02–10 each supply one `current`
-fixture; case 11 uses `11a-duplicate-match.html` then
+used as `previous` for most diffs; cases 02–10 and 13 each supply one
+`current` fixture; case 11 uses `11a-duplicate-match.html` then
 `11b-duplicate-match-variant.html`; case 12 uses
 `12a-flappy-open.html` / `12b-flappy-closed.html`.
 
@@ -41,13 +41,14 @@ fixture; case 11 uses `11a-duplicate-match.html` then
 | 10 | `watch_for` phrase appears in unrelated static FAQ copy, added as part of an unrelated page update | Semantic context vs. keyword presence | **Fires (false positive)** | No detection |
 | 11 | The same underlying opening, evolving slightly between polls (11a → 11b: "3 remaining" added) | Memory dedup, and its real limit | Fires on both (duplicate notification) | **Fires on both too** — memory keys on an exact snippet match, so a byte-for-byte identical *revisit* (tested separately, see `advanced/test_watcher.py::test_revisited_exact_match_is_deduped_via_memory`) is deduped, but this evolved-text pair is not. A documented limitation, not a bug — see `PROBLEM_STATEMENT.md` |
 | 12 | **Challenging case:** a slot opens and is claimed by someone else within one poll interval (flappy/race) | What "detected" even means under a race condition | Fires on the open (single-pass, no verification) | **Declines** — `detect()` sees the opening, but `verify()`'s fresh re-fetch sees it already closed and correctly withholds the draft. See the design note below: this is a real trade-off (verification can turn a fleeting true positive into a silent miss), not an unqualified win, and is this project's Hot Take. |
+| 13 | **Recall gap:** a real opening appears, but the page signals it with a new link/button ("Book now — 4 players") instead of the literal watched phrase | Whether a detector needs the exact keyword to recognize a match at all | **Silent — a false negative.** Baseline's "perfect recall" elsewhere in this table was an artifact of every real match happening to contain `keyword`, not a structural guarantee; this case exposes that. | **Fires correctly** — reads "Book now" on the Saturday 9-11am row as satisfying `watch_for` even with zero lexical overlap with any configured keyword. Real result: TP moves from 3→4, baseline recall drops 1.00→0.75, advanced recall holds at 1.00 (see `CHANGELOG.md`). |
 
 ## Orchestration cases (injected fake clock, not fixture content)
 
 | ID | Case | What it tests | Expected: baseline | Expected: advanced |
 |---|---|---|---|---|
-| 13 | Poll attempted after `auto_expire` (the failsafe) has passed | The watch stops entirely once its safety-net deadline is reached, regardless of `release_date` | No poll fires; no action even if the underlying page has a real match | Same |
-| 14 | Poll interval as `release_date` approaches, with `auto_expire` set well past it | Adaptive polling — same total poll budget skewed toward the window that matters, driven by `release_date`, not `auto_expire` | N/A (baseline uses a fixed interval only — documented limitation, not tested here) | Interval measurably tightens as `release_date` nears vs. a poll made far from it; unaffected by how far `auto_expire` is |
+| 14 | Poll attempted after `auto_expire` (the failsafe) has passed | The watch stops entirely once its safety-net deadline is reached, regardless of `release_date` | No poll fires; no action even if the underlying page has a real match | Same |
+| 15 | Poll interval as `release_date` approaches, with `auto_expire` set well past it | Adaptive polling — same total poll budget skewed toward the window that matters, driven by `release_date`, not `auto_expire` | N/A (baseline uses a fixed interval only — documented limitation, not tested here) | Interval measurably tightens as `release_date` nears vs. a poll made far from it; unaffected by how far `auto_expire` is |
 
 ## Design note on case 12 (resolved — this is the project's Hot Take)
 
@@ -66,7 +67,7 @@ behavior is simply "better" — they're different trade-offs:
   verification step that does that can also filter out a real,
   fleeting opportunity if it closes between detection and verification.
 
-The honest fix isn't smarter detection — it's **case 14's adaptive
+The honest fix isn't smarter detection — it's **case 15's adaptive
 polling** (tightening the interval as `release_date` nears), which
 narrows the race window itself rather than trying to out-clever a race
 after the fact. See `CHANGELOG.md` and `README.md`'s hot take for the
@@ -76,9 +77,9 @@ one-sentence version (rubric criterion: Hot Take/Insights, 5 pts).
 
 Precision/recall over "correctly identified an actionable,
 criteria-matching opening and correctly gated it behind human approval,"
-computed across cases 01–11 (case 12 is analyzed separately as the
-challenging case; cases 13–14 are orchestration checks, not scored for
-precision/recall).
+computed across cases 01–11 and 13 (case 12 is analyzed separately as
+the challenging case; cases 14–15 are orchestration checks, not scored
+for precision/recall).
 
 ## Secondary metrics
 
@@ -89,12 +90,12 @@ precision/recall).
 
 ## Status
 
-All 14 cases are implemented and passing. `eval/run_eval.py --solution
-both` scores cases 01–11 for both solutions (baseline: see
-[`../CHANGELOG.md`](../CHANGELOG.md) for the result — precision 0.38,
-recall 1.00, false-positive rate 0.56; advanced: see the CHANGELOG entry
-for the actual numbers and whether they're from a real API run or
-`--fake`). Case 12 (flappy) and cases 13-14 (the injected-clock
-orchestration checks) are covered directly in `advanced/test_watcher.py`
-and `advanced/test_detector.py` rather than in `run_eval.py`'s
-precision/recall table, per the "Primary metric" note above.
+All 15 cases are implemented and passing. `eval/run_eval.py --solution
+both` scores cases 01–11 and 13 for both solutions — see
+[`../CHANGELOG.md`](../CHANGELOG.md) for the real numbers (baseline:
+precision 0.38, recall 0.75; advanced: precision 1.00, recall 1.00, real
+API run, not `--fake`). Case 12 (flappy) and cases 14-15 (the
+injected-clock orchestration checks) are covered directly in
+`advanced/test_watcher.py` and `advanced/test_detector.py` rather than
+in `run_eval.py`'s precision/recall table, per the "Primary metric" note
+above.

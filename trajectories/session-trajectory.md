@@ -1094,3 +1094,288 @@ documented commands rather than assuming they still matched the code.
 The video guide gives the user a concrete, teachable path to the one
 deliverable that genuinely can't be produced by the agent — an actual
 recording.
+
+---
+
+## Stage 4 (continued): a second demo script, user's own sequence
+
+### Instructions given (verbatim, user message)
+
+> i've committed it but i gitignored the video_guide. let's keep this
+> one and then make me another one but i want the sequence to be:
+>
+> 1. introduction - what the tool is, applications, inspiration
+> 2. what is included in the submission (repo) - claude.md context from
+>    2 practice sessions, baseline and advanced solutions, deployment
+>    instructions
+> 3. evaluation with static fixtures (question for you: why does
+>    REPRODUCTION.md have to be in a separate folder than eval?)
+> 4. baseline demo
+> 5. advanced demo
+> 6. run_eval both
+> 7. planned improvements
+
+### What the agent did
+
+1. Checked what actually happened to `VIDEO_GUIDE.md`: `git log
+   --stat` on the Stage 4 commit (`af85f16`) showed it was never part
+   of any commit at all — the user added it to `.gitignore` before ever
+   staging it, so it was simply excluded, not untracked-after-tracking.
+   File still exists on disk untouched; nothing needed to "preserve" it.
+2. Answered the REPRODUCTION.md-location question directly:
+   `docs/REPRODUCTION.md` isn't eval-specific — it covers setup,
+   baseline, advanced, the eval comparison, *and* deployment (section
+   5), so it belongs at the "whole repo" level (`docs/`) rather than
+   inside one component folder (`eval/`), which is scoped to the
+   evaluation harness's own code and data. Gave the reasoning and left
+   the actual decision to the user rather than just complying or just
+   refusing.
+3. Wrote `DEMO_SCRIPT.md` (new file, root, not gitignored) following
+   the user's exact 7-beat sequence. Folded the rubric-required content
+   the user didn't explicitly list — "the change that contributed
+   most," the closest honest equivalent to "one experiment removed"
+   (the `--fake` stub), and the hot take — into the beats where they
+   fit naturally (beat 6, beat 3, beat 7 respectively) rather than
+   adding extra beats the user didn't ask for. Kept the same
+   teaching-style format as `VIDEO_GUIDE.md` (suggested line + "why
+   this matters" note per beat, per the standing preference in this
+   agent's memory).
+4. Caught a real bug before it shipped: `README.md`'s "Demo video"
+   section still linked to `VIDEO_GUIDE.md`, which is now gitignored —
+   a broken link for anyone else cloning the repo, since that file
+   wouldn't exist for them. Fixed it to point at `DEMO_SCRIPT.md`
+   instead, and confirmed via `git check-ignore` that the new file
+   itself isn't accidentally caught by any gitignore pattern.
+5. Verified Beat 4's exact demo command for real (baseline firing on
+   the negation fixture) and re-ran the full test suite — 70/70 still
+   pass, docs-only change.
+
+### Human checkpoint
+
+Presenting `DEMO_SCRIPT.md`, the REPRODUCTION.md-location answer, and
+the fixed README link — awaiting confirmation/commit instruction.
+
+### Outcome
+
+A second, user-sequenced demo script exists alongside the
+now-gitignored original, both teaching-style rather than read-verbatim.
+Caught a real broken-link bug (README pointing at a file that won't
+exist for anyone else) as a direct consequence of double-checking the
+gitignore change's downstream effects rather than just adding the new
+file and moving on.
+
+---
+
+## Stage 4 (continued): a real crash the agent's own testing never caught
+
+### Instructions given (verbatim, user message)
+
+> why does it have an error but still prints page changed?
+>
+> [pasted traceback: `python -m baseline.watcher --source
+> eval/fixtures/06-negation.html --state /tmp/demo-state.txt` in
+> PowerShell — printed the notification correctly, then crashed with
+> `FileNotFoundError: [Errno 2] No such file or directory:
+> '\\tmp\\demo-state.txt'`]
+
+### What the agent did
+
+1. Diagnosed precisely, not just "it's a path issue": `notify()` runs
+   and prints before the crash because `run()`'s write-state line comes
+   *after* the notify call — the notification succeeding and the crash
+   both being visible in one run is the exact evidence of where the
+   failure sits. Identified the root cause: `/tmp/...` only resolves as
+   a real directory in Git Bash/MSYS (the shell the agent's own Bash
+   tool uses), and resolves to a nonexistent directory off the current
+   drive root in native PowerShell (what the user actually ran) —
+   `Path.write_text()` doesn't create missing parent directories, so it
+   crashed on the very next line.
+2. Recognized this as two separate problems needing two separate fixes,
+   not one: (a) every documented example command using `/tmp/...` had
+   the same latent bug, since the agent had only ever verified them from
+   the one shell where it's invisible; (b) `run()`'s state-writing code
+   itself was fragile to *any* path with a missing parent directory,
+   not just this one case — a doc fix alone would leave that fragility
+   for the next person.
+3. Fixed the code: added `state_file.parent.mkdir(parents=True,
+   exist_ok=True)` to both `baseline/watcher.py` and
+   `advanced/watcher.py`'s `run()`, matching a pattern
+   `advanced/memory.py`'s `save()` already had (so the fix brought the
+   two solutions up to a standard that already existed elsewhere in the
+   codebase, rather than inventing a new one). Wrote a test for each
+   that specifically uses a *subdirectory* of `tmp_path` rather than
+   `tmp_path` itself — every prior test used `tmp_path` directly, which
+   already exists, so none of them could have caught this class of bug.
+4. Fixed the docs at the root cause, not just the symptom: replaced
+   every `/tmp/...` reference across `docs/REPRODUCTION.md`,
+   `DEMO_SCRIPT.md`, and the (gitignored, but still the user's actual
+   filming reference) `VIDEO_GUIDE.md` with a relative `sauron-run/`
+   scratch directory, gitignored, which resolves identically in both
+   shells — no shell-specific variants needed anywhere.
+5. Verified the fix for the actual failure mode, not a proxy for it: ran
+   the corrected command via the PowerShell tool specifically (not the
+   Bash tool this time) to reproduce the user's exact execution
+   environment, confirmed it now creates the directory and writes
+   cleanly.
+6. Wrote a full `CHANGELOG.md` entry treating this with the same rigor
+   as the Stage 3 API-key bugs — evidence (the user's pasted traceback),
+   change (both fixes), result (72/72 tests, cross-shell verification).
+   Named the pattern explicitly: this is the second time in the project
+   that testing exclusively through one execution path missed something
+   the user's actual environment caught immediately (the first being
+   the Stage 3 API-key/BOM/EOFError bugs, all found by finally running
+   the real thing instead of only unit tests against fakes) — flagged
+   as material for the Hot Take beat, without rewriting the already-solid
+   verification-trade-off hot take to make room for it.
+
+### Human checkpoint
+
+Presenting the fix (code + docs + tests + changelog) for confirmation
+before committing.
+
+### Outcome
+
+A crash that was invisible to every test this agent could run itself
+(unit tests use `tmp_path`, which exists; the agent's own Bash tool
+resolves `/tmp` correctly) but immediate for the user's actual shell.
+Underscores a lesson specific to this agent's own testing limits: this
+session's Bash tool and the user's real PowerShell are genuinely
+different execution environments, and "I tested it" needs to specify
+*where*.
+
+---
+
+## Stage 4 (continued): demo scripts pointed at the wrong config
+
+### Instructions given (verbatim, user messages)
+
+> what am i supposed to see when i demo the advanced run? there's no
+> terminal output
+
+(Then, after being offered a working command and a diagnostic
+question:) "the exact command written in demo script."
+
+### What the agent did
+
+1. First response assumed the likely cause (shipped example config
+   points at a boring fixture) and gave a working workaround — created
+   `sauron-run/demo-config.json` ad hoc and handed the user a corrected
+   command, while asking via `AskUserQuestion` whether they'd run the
+   shipped default or something already pointed at a real match.
+2. User's answer ("the exact command written in demo script") revealed
+   the workaround wasn't the real fix — the *documented* command itself
+   was broken, not just something the user mistyped. Went back and read
+   `DEMO_SCRIPT.md`'s actual Beat 5 text closely: found the parenthetical
+   "(config pointed at a real match — see setup note below)" sitting
+   directly above a command that still literally used
+   `advanced/watch_config.example.json` unmodified — a direct
+   contradiction between what the script claimed and what it told the
+   reader to type. Checked `VIDEO_GUIDE.md`'s equivalent Beat 2 and
+   `docs/REPRODUCTION.md`'s section 3 for the same pattern — both had
+   a version of it (VIDEO_GUIDE.md structurally identical; REPRODUCTION.md
+   milder, correct prose but no copy-paste command).
+3. Fixed at the root instead of patching the misleading sentence: added
+   a concrete, verified one-liner to both scripts' "before you record"
+   setup sections that builds `sauron-run/demo-config.json` (the example
+   config with `source` swapped to a real-match fixture), pointed each
+   file's advanced-demo beat at that file instead of the shipped
+   example, and deleted the now-redundant separate "setup note" section
+   that had been disconnected from the beat that needed it.
+4. Applying the cross-shell lesson from the previous entry immediately:
+   verified the PowerShell `-replace` one-liner via the PowerShell tool
+   and the bash `sed` equivalent via the Bash tool, separately, each in
+   its actual shell, before writing either into `docs/REPRODUCTION.md`
+   (which now offers both).
+5. Wrote a `CHANGELOG.md` entry treating this with the same rigor as
+   the other two bug entries this stage.
+
+### Human checkpoint
+
+Presenting the fix (all three docs corrected, both shell variants
+independently verified) for confirmation before committing.
+
+### Outcome
+
+Two demo scripts that told the reader to do one thing and then showed
+them a command that did another — found because the user pushed back
+on a first-pass diagnosis ("here's a workaround") rather than accepting
+it, which surfaced that the actual shipped instructions were wrong, not
+just something they'd missed.
+
+---
+
+## Stage 4 (continued): a new case that corrected baseline's recall claim
+
+### Instructions given (verbatim, user message)
+
+> i think a test case where the baseline solution would not fire but
+> the advanced would is a good demonstration for the advanced solution.
+> think about a scenario where an agent would correctly fire without the
+> actual keyword. maybe the user is waiting for signups to open but the
+> page just adds a link without the actual signup keyword.
+
+### What the agent did
+
+1. Recognized this wasn't just "a good demo idea" but exposed a real
+   gap in the eval's honesty: every existing "real match" fixture (05,
+   11a, 11b) happened to contain baseline's literal `keyword` by
+   construction, so the project's own reported "baseline recall: 1.00"
+   had never actually been tested against a case where it could fail —
+   it was true by fixture design, not by demonstrated property.
+2. Designed `eval/fixtures/13-recall-gap.html` in the existing scenario
+   (not a new demo domain): the Saturday 9-11am row changes from "Fully
+   booked" to "Book now — 4 players" — zero lexical overlap with "slot
+   available," directly matching the user's "signups... just adds a
+   link" framing.
+3. Added it to `eval/run_eval.py`'s scored CASES list *before* touching
+   any documentation, and ran baseline first (free) to confirm the
+   hypothesis: TP=3 FP=5 TN=4 **FN=1**, recall 1.00→0.75. Then ran the
+   real advanced eval (dot-sourcing `deploy/secrets.ps1` in one call,
+   same never-read-the-key pattern as before): TP=4 FP=0 TN=9 FN=0,
+   precision and recall both still 1.00 — advanced genuinely reads "Book
+   now" on the matching row as satisfying `watch_for` with no keyword to
+   lean on. Verified the real result before writing a single number into
+   any doc, rather than assuming the outcome.
+4. Renumbered `eval/CASES.md`'s orchestration cases (13→14, 14→15) to
+   make room for the new case in the scored content-diff sequence rather
+   than overloading an existing case ID — grepped the whole repo first
+   for every "case 13"/"case 14" reference (found and fixed two test
+   file comments) so the renumbering didn't leave stale pointers.
+5. Added three new tests matching existing coverage patterns exactly:
+   `baseline/test_watcher.py` (documents the false negative, parallel to
+   the existing false-positive tests), `advanced/test_detector.py` and
+   `advanced/test_watcher.py` (prove the pipeline correctly acts on this
+   case given a real-shaped classify response).
+6. Propagated the real numbers everywhere a stale one would mislead:
+   `baseline/README.md`, `advanced/README.md`, root `README.md` (status
+   line, the Measured Improvement table, and its accompanying paragraph
+   rewritten — the old "recall stayed flat" framing was no longer true
+   and needed replacing, not just the number), `docs/REPRODUCTION.md`
+   (expected eval output, test counts, API call count), `PROBLEM_STATEMENT.md`
+   (prior-art gap list extended from three gaps to four, evaluation plan
+   case count). Left historical `CHANGELOG.md` entries from before this
+   case existed untouched, consistent with treating the changelog as a
+   point-in-time journal rather than a live-updated summary.
+7. Updated both demo scripts' comparison beats (`DEMO_SCRIPT.md`'s Beat
+   6, `VIDEO_GUIDE.md`'s Beat 3) to call out case 13 explicitly — it
+   already shows up for free in the `run_eval --solution both` table
+   output, so this just added narration, not runtime.
+8. Final sweep: grepped for every remaining "TP=3 FP=0", "12 cases", and
+   "three gaps" reference across all docs to confirm nothing stale was
+   left standing outside the (intentionally preserved) historical
+   changelog entries. 75/75 tests pass.
+
+### Human checkpoint
+
+Presenting the new case, its real (not assumed) results, and every
+doc/test updated to match — for confirmation before committing.
+
+### Outcome
+
+The submission's baseline-vs-advanced comparison is now measurably more
+rigorous than before the user's suggestion: baseline's recall claim is
+no longer an artifact of how the fixtures happened to be written, and
+advanced's win is demonstrated on a case it could not have solved by
+being merely "more careful" — it required actually understanding what
+the page said. A user's brainstorming suggestion turned into a real
+correction to a previously-unexamined assumption in the eval design.

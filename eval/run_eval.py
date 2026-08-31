@@ -27,8 +27,8 @@ from baseline.watcher import has_changed, matches_watch_for
 FIXTURES = Path(__file__).parent / "fixtures"
 
 # (case_id, previous_fixture, current_fixture, ground_truth_is_actionable_match)
-# Cases 12-14 are excluded here — 12 (the challenging flappy case) and
-# 13-14 (clock-based orchestration cases) aren't meaningful for a
+# Case 12 (the challenging flappy case) and 14-15 (clock-based
+# orchestration cases) are excluded here -- not meaningful for a
 # precision/recall pass over content detection; see eval/CASES.md.
 CASES = [
     ("01-steady", "00-baseline.html", "00-baseline.html", False),
@@ -48,6 +48,7 @@ CASES = [
         "11b-duplicate-match-variant.html",
         True,
     ),
+    ("13-recall-gap", "00-baseline.html", "13-recall-gap.html", True),
 ]
 
 WATCH_FOR = "a Saturday 9-11am court booking for 4 people"

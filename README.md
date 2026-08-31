@@ -4,14 +4,15 @@
 > [micro1 Frontier Engineering Challenge 2026](https://www.hackerearth.com/community/challenges/hackathon/micro1-frontier-engineering-challenge-2026/).
 
 **Status:** ✅ Stage 3 (Advanced) complete and measured for real — both
-solutions implemented and passing (70/70 tests across the repo), both
+solutions implemented and passing (75/75 tests across the repo), both
 deployable standalone (real email/console notifications + Windows
 Scheduled Task — see [`deploy/README.md`](deploy/README.md)). Baseline:
-precision 0.38 / recall 1.00 / false-positive rate 0.56. **Advanced
+precision 0.38 / recall 0.75 / false-positive rate 0.56. **Advanced
 (real Anthropic API, not a stub): precision 1.00 / recall 1.00 /
-false-positive rate 0.00** — perfect on all 12 cases, including every
-one baseline gets wrong. See [`CHANGELOG.md`](CHANGELOG.md) for the full
-story. Full process log:
+false-positive rate 0.00** — perfect on all 13 cases, including every
+one baseline gets wrong on precision *and* the one it misses outright
+(a real opening signaled without the literal keyword). See
+[`CHANGELOG.md`](CHANGELOG.md) for the full story. Full process log:
 [`trajectories/session-trajectory.md`](trajectories/session-trajectory.md).
 Full problem framing: [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md).
 
@@ -71,7 +72,7 @@ python -m eval.run_eval --solution advanced --fake     # $0 pipeline sanity chec
 
 ## Measured improvement
 
-Same 12 cases, same `watch_for`, both solutions given identical fixture
+Same 13 cases, same `watch_for`, both solutions given identical fixture
 input — `python -m eval.run_eval --solution both` (real Anthropic API
 for advanced, not `--fake`; see [`CHANGELOG.md`](CHANGELOG.md) for the
 full run and sample model reasoning):
@@ -79,16 +80,20 @@ full run and sample model reasoning):
 | Metric | Simple baseline | Agent solution | Change |
 |---|---|---|---|
 | Precision | 0.38 | 1.00 | **+0.62** |
-| Recall | 1.00 | 1.00 | unchanged — neither ever misses a real opening |
+| Recall | 0.75 | 1.00 | **+0.25** |
 | False-positive rate | 0.56 | 0.00 | **−0.56** |
 | Human action per detected match | Read a bare "page changed" alert → re-check the page yourself → judge whether it actually matches → fill out the booking form | Read a pre-drafted, pre-verified match with cited reasoning → tap approve | Qualitative, not stopwatch-timed: "read and judge from scratch" vs. "confirm a draft" |
 | Cost per poll | $0 | ~$0.0001–0.0005 (1–2 `claude-haiku-4-5` calls) | +a fraction of a cent |
 
-Recall staying flat at 1.00 is deliberate context, not a wasted row:
-baseline's failure mode was never missing real openings — it was
-drowning them in false positives (5 of 8 non-matches misfired). Advanced
-eliminates every one of those without giving up any of baseline's
-recall.
+Two distinct wins here, not one. On five of eight non-matches, baseline
+fires when it shouldn't (negation, three criteria near-misses, an FAQ
+mention) — that's the precision column. But baseline also *misses* a
+genuine opening outright when the page signals it without the exact
+configured keyword: a "Book now" link appearing instead of the word
+"available" still means a real match, and a substring check has no way
+to see it. Advanced doesn't just filter noise better — it recognizes
+openings baseline is structurally blind to, holding recall at 1.00
+while baseline's drops to 0.75 on that one case alone.
 
 ## Improvement changelog
 
@@ -96,7 +101,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full iteration history with evidence 
 
 ## Demo video
 
-*(Link to the ≤5 minute solution video once recorded — see [`VIDEO_GUIDE.md`](VIDEO_GUIDE.md) for the shot-by-shot script and setup steps.)*
+*https://1drv.ms/v/c/1697629eee313eb4/IQBR5gYLrAU7R7-0v64hA4xtAQPKGA-NR5h0wwvMOW2Y20M?e=hOP66x*
 
 ## Main failure mode & hot take
 

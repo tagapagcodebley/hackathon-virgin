@@ -41,7 +41,7 @@ slot-sniping (recreation.gov bots, Global Entry/visa appointment
 finders).
 
 Every one of these does **keyword/CSS-selector/price-threshold matching
-on a diff, and stops at a notification.** That leaves three gaps a
+on a diff, and stops at a notification.** That leaves four gaps a
 plain-language, agentic watcher can close:
 
 1. **No semantic understanding, only substring matching.** A page that
@@ -52,7 +52,15 @@ plain-language, agentic watcher can close:
    the wrong time, or for the wrong party size still trips a keyword
    match. None of these tools take a full description of what you
    actually want and check the specific opening against it.
-3. **The user still does all the follow-through by hand**, under time
+3. **A real opening can be missed entirely, not just misclassified.**
+   Substring matching only fires when the page happens to use the exact
+   configured phrase. A page that instead adds a "Book now" link for the
+   matching slot — no "slot," no "available" anywhere — is invisible to
+   a keyword tool even though it's a genuine match. This isn't a
+   hypothetical: `eval/CASES.md`'s case 13 measures it directly, and it's
+   the one case in this project where baseline's recall (not just its
+   precision) actually fails — see `CHANGELOG.md`.
+4. **The user still does all the follow-through by hand**, under time
    pressure, after the alert lands. Nothing drafts the actual next step.
 
 ### Auto-expire vs. release date — two different dates, not one
@@ -151,8 +159,10 @@ the evaluation.
   time per task (time from a real opening appearing to a drafted action
   being ready for approval) — advanced solution only, since baseline
   never drafts an action.
-- **≥10 cases**, including decoys, the negation case (baseline's
-  sharpest failure mode), criteria near-misses, a duplicate/memory case,
+- **≥10 cases** (15 total), including decoys, the negation case
+  (baseline's sharpest precision failure), criteria near-misses, a
+  duplicate/memory case, a recall-gap case (a real opening signaled
+  without the literal keyword — baseline's sharpest *recall* failure),
   and one challenging race case (a slot that opens and closes within a
   single poll interval) — see `eval/CASES.md`. Two additional
   orchestration cases (expiry, adaptive interval) are tested against an

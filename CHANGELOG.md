@@ -20,6 +20,142 @@ Keep cosmetic/no-op changes out of this file — only entries that moved a metri
 
 <!-- Newest entries at the top -->
 
+### [2026-08-31] Case 13: baseline's recall wasn't actually perfect, it was untested
+
+**Evidence:** User: "I think a test case where the baseline solution
+would not fire but the advanced would is a good demonstration for the
+advanced solution... maybe the user is waiting for signups to open but
+the page just adds a link without the actual signup keyword." Correct,
+and it exposed something the eval design hadn't earned: every prior
+"real match" fixture (05, 11a, 11b) happened to contain baseline's
+literal `keyword` ("slot available") by construction, so baseline's
+1.00 recall was never a demonstrated structural property — it was an
+artifact of how the fixtures were written.
+
+**Change:** Added `eval/fixtures/13-recall-gap.html` — the Saturday
+9-11am row changes from "Fully booked" to "Book now — 4 players" (zero
+lexical overlap with "slot available"). Added it to `eval/run_eval.py`'s
+scored case set (ground truth: a real match). Renumbered `eval/CASES.md`'s
+orchestration cases 13→14, 14→15 to make room, and added new tests:
+`baseline/test_watcher.py::test_recall_gap_is_a_documented_false_negative`,
+`advanced/test_detector.py::test_recall_gap_detected_without_the_literal_keyword`,
+`advanced/test_watcher.py::test_recall_gap_notifies_and_submits_where_baseline_would_stay_silent`.
+Updated `PROBLEM_STATEMENT.md`'s prior-art gap list from three gaps to
+four (the new one: "a real opening can be missed entirely, not just
+misclassified").
+
+**Result:** Ran both solutions for real against the expanded 13-case
+set. Baseline:
+
+```
+TP=3  FP=5  TN=4  FN=1
+Precision:            0.38
+Recall:               0.75
+False-positive rate:  0.56
+```
+
+Baseline's recall dropped from a previously-reported 1.00 to 0.75 — not
+a regression, a correction: the earlier number never measured what it
+appeared to. Advanced, real API, same case set:
+
+```
+TP=4  FP=0  TN=9  FN=0
+Precision:            1.00
+Recall:               1.00
+False-positive rate:  0.00
+```
+
+Advanced holds perfect precision *and* recall even with the harder case
+included — it correctly reads "Book now" appearing on the Saturday
+9-11am row as satisfying `watch_for`, with no keyword to lean on at all.
+This is a stronger demonstration than the previous evaluation could
+offer: advanced isn't just more conservative than baseline (better
+precision, same recall) — it genuinely sees things baseline structurally
+cannot. 75/75 tests pass. Propagated the real numbers through
+`README.md`, `baseline/README.md`, `advanced/README.md`,
+`docs/REPRODUCTION.md`, and `eval/CASES.md`.
+
+### [2026-08-31] Demo scripts told users to point at a real match, then showed a command that didn't
+
+**Evidence:** User: "what am i supposed to see when i demo the advanced
+run? there's no terminal output." Traced it: `DEMO_SCRIPT.md`'s Beat 5
+said "(config pointed at a real match — see setup note below)" directly
+above a command that literally used
+`--config advanced/watch_config.example.json` unmodified — which points
+at the boring `00-baseline.html` fixture and correctly prints nothing.
+The actual fix (edit a copy's `source` field) was described in prose in
+a separate section near the bottom of the file, disconnected from the
+beat that needed it. `VIDEO_GUIDE.md` had the identical structural flaw
+in its own Beat 2.
+
+**Change:** Rather than patch the misleading sentence, removed the
+ambiguity entirely: both files' "before you record" setup now includes
+a concrete, verified-in-its-actual-shell one-liner (PowerShell
+`-replace`, tested directly) that builds `sauron-run/demo-config.json`
+— the example config with `source` swapped to a matching fixture — and
+each file's advanced-demo beat now runs that file directly instead of
+the shipped example. Deleted the now-redundant prose-only setup note.
+Also tightened `docs/REPRODUCTION.md` section 3 the same way, adding
+both a `sed` (bash) and a PowerShell one-liner, each verified in its
+actual shell before being written down — per the `/tmp/` lesson two
+entries below this one, "I tested it" now specifies which shell.
+
+**Result:** Confirmed manually: the shipped example config silently
+finds no match (intended); `sauron-run/demo-config.json` produces the
+full detect → verify → draft → approve flow with real model reasoning.
+Both PowerShell and bash config-transform one-liners verified to
+produce identical, valid JSON.
+
+### [2026-08-31] Fixed a real /tmp/ path bug in every reproduction example
+
+**Evidence:** User ran `docs/REPRODUCTION.md`'s exact documented baseline
+command in native PowerShell and hit a crash the agent never saw:
+
+```
+[Sauron] Sauron: page changed and contains 'slot available'
+...
+FileNotFoundError: [Errno 2] No such file or directory: '\\tmp\\demo-state.txt'
+```
+
+`/tmp/...` only resolves as a real directory in Git Bash/MSYS, which is
+what the agent used to verify every command in this repo's docs. In
+native Windows PowerShell, `/tmp/...` resolves to a nonexistent
+directory off the current drive root, and `Path.write_text()` doesn't
+create missing parent directories — so the notification fired correctly
+(that line runs first), then the very next line, persisting state,
+crashed. Every documented example command using `/tmp/...` had this
+same latent bug; it happened not to be caught earlier because the agent
+verified them all from a shell where the bug is invisible.
+
+**Change:** Two fixes, not one — a doc fix alone would have left the
+underlying fragility in place for the next person who supplies any path
+with a missing parent directory:
+
+1. `baseline/watcher.py` and `advanced/watcher.py`'s `run()` now
+   `state_file.parent.mkdir(parents=True, exist_ok=True)` before ever
+   writing state — matching the pattern `advanced/memory.py`'s
+   `WatcherMemory.save()` already had. Added
+   `test_run_creates_missing_parent_directory_for_state_path` (baseline)
+   and `test_run_creates_missing_parent_directories_for_state_and_memory`
+   (advanced) — both use a `tmp_path` subdirectory that doesn't exist
+   yet, since every prior test used `tmp_path` directly (which already
+   exists) and so couldn't have caught this.
+2. Replaced every `/tmp/...` reference across `docs/REPRODUCTION.md`,
+   `DEMO_SCRIPT.md`, and `VIDEO_GUIDE.md` with a relative `sauron-run/`
+   scratch directory (gitignored), which resolves identically in both
+   Git Bash and native PowerShell — no shell-specific path logic needed
+   anywhere.
+
+**Result:** 72/72 tests pass (70 → 72). Reproduced the exact original
+crash, then confirmed the fix resolves it, via PowerShell directly (not
+just the agent's own Bash-tool testing this time) — ran the corrected
+`sauron-run/`-based command, confirmed it creates the directory and
+writes the file with no error. This is the second time in this project
+that testing exclusively through one execution path (unit tests against
+fakes; here, the agent's own Bash-tool shell) missed something the
+user's actual environment caught immediately — see the entry below for
+the first. Worth remembering for the Hot Take.
+
 ### [2026-08-29] Real advanced numbers: precision 1.00, recall 1.00 — plus three bugs the first real run surfaced
 
 **Evidence:** The previous entry's `--fake` numbers were explicitly

@@ -86,6 +86,7 @@ def run(
     skipped rather than crashing the caller.
     """
     state_file = Path(state_path)
+    state_file.parent.mkdir(parents=True, exist_ok=True)
     previous = state_file.read_text(encoding="utf-8") if state_file.exists() else None
 
     try:

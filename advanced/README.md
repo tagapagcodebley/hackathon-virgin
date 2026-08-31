@@ -44,21 +44,24 @@ Real run (`python -m eval.run_eval --solution advanced`, real Anthropic
 the full entry):
 
 ```
-TP=3  FP=0  TN=9  FN=0
+TP=4  FP=0  TN=9  FN=0
 Precision:            1.00
 Recall:               1.00
 False-positive rate:  0.00
 ```
 
-vs. baseline's precision 0.38 / recall 1.00 / false-positive rate 0.56
-on the same 12 cases. Perfect classification, including every case
-baseline gets wrong: negation, all three criteria near-misses, and the
-ambiguous FAQ mention.
+vs. baseline's precision 0.38 / recall 0.75 / false-positive rate 0.56
+on the same 13 cases. Perfect classification, including every case
+baseline gets wrong on precision (negation, all three criteria
+near-misses, the ambiguous FAQ mention) *and* the one it misses on
+recall — case 13, a real opening signaled by a "Book now" link instead
+of the literal watched keyword, which baseline structurally cannot see
+at all and advanced catches with zero lexical overlap to work from.
 
 ## Status
 
 Implemented (Stage 3) and verified with a real API run — not just
-`--fake`. 70/70 tests pass (`python -m pytest advanced/ baseline/
+`--fake`. 75/75 tests pass (`python -m pytest advanced/ baseline/
 test_notifications.py -v`), the unit tests all against injected fakes
 (no network, no API key, no cost) and the real CLI additionally run live
 end-to-end: config loading, fixture fetch, real semantic detection +

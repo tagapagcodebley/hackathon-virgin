@@ -25,7 +25,7 @@ cases referenced below.
 - **Approx cost:** $0 for baseline and for both test suites (no API
   calls). Advanced's real eval run makes one `claude-haiku-4-5` call per
   case for detection, plus one more for each positive detection to
-  verify — 15 calls total for the actual 12-case run (confirmed, see
+  verify — 17 calls total for the actual 13-case run (confirmed, see
   `CHANGELOG.md`), well under a cent at Haiku 4.5 pricing. `--fake` mode
   (see below) runs the same pipeline for $0 against a stubbed
   classifier, useful for a quick sanity check but NOT the measured
@@ -49,12 +49,19 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ## 2. Run the baseline
 
 ```bash
-python -m baseline.watcher --source eval/fixtures/05-real-match.html --state /tmp/sauron-state.txt
+python -m baseline.watcher --source eval/fixtures/05-real-match.html --state sauron-run/state.txt
 ```
+
+`sauron-run/` is a relative scratch directory (gitignored, created
+automatically if missing) — deliberately not an absolute path like
+`/tmp/...`, which only resolves the way you'd expect in a POSIX-style
+shell (Git Bash/MSYS); in native Windows PowerShell it resolves to a
+nonexistent directory off the current drive root instead. A relative
+path like this one works identically in both.
 
 **Expected output:** two lines to stdout —
 `[Sauron] Sauron: page changed and contains 'slot available'` followed
-by a text snippet around the match — plus `/tmp/sauron-state.txt`
+by a text snippet around the match — plus `sauron-run/state.txt`
 written with the fetched page text, used as `previous` on the next run.
 Run it again against the same source and nothing prints, since the page
 "hasn't changed" from the persisted state. Add `--notify email` for a
@@ -67,12 +74,12 @@ Run the full test suite (baseline + the shared notification module):
 python -m pytest baseline/ test_notifications.py -v
 ```
 
-**Expected output:** `18 passed`.
+**Expected output:** `20 passed`.
 
 ## 3. Run the advanced solution
 
 ```bash
-python -m advanced.watcher --config advanced/watch_config.example.json --state /tmp/sauron-adv-state.txt --memory /tmp/sauron-adv-memory.json
+python -m advanced.watcher --config advanced/watch_config.example.json --state sauron-run/adv-state.txt --memory sauron-run/adv-memory.json
 ```
 
 **Expected output:** with the shipped example config (which points at
@@ -83,12 +90,25 @@ on each run**: the *first* poll has no prior state to compare against
 real classify() call — it correctly finds no match and prints nothing,
 but this poll needs `ANTHROPIC_API_KEY` regardless. Run it again and the
 *second* poll skips classification entirely, since the page is
-byte-identical to last time — this one is genuinely free. To see a real
-detection, drafted action, and approval prompt, point `--config` at a
-copy of the example with `"source"` changed to
-`eval/fixtures/05-real-match.html` — Sauron will call the Anthropic API,
-correctly detect the match, verify it with a second call, print the
-alert, and (in an interactive terminal) prompt
+byte-identical to last time — this one is genuinely free.
+
+To see a real detection, drafted action, and approval prompt, don't
+reuse the command above unmodified — it will stay silent forever
+against that fixture. Build a config pointed at a real match instead:
+
+```bash
+mkdir -p sauron-run
+sed 's/00-baseline\.html/05-real-match.html/' advanced/watch_config.example.json > sauron-run/demo-config.json
+python -m advanced.watcher --config sauron-run/demo-config.json --state sauron-run/adv-state.txt --memory sauron-run/adv-memory.json
+```
+
+(PowerShell: `(Get-Content advanced\watch_config.example.json -Raw)
+-replace '00-baseline\.html', '05-real-match.html' | Set-Content
+sauron-run\demo-config.json -NoNewline` instead of the `sed` line.)
+
+Sauron will call the Anthropic API, correctly detect the match, verify
+it with a second call, print the alert, and (in an interactive
+terminal) prompt
 `Approve and simulate-submit? [y/N]`. Approving appends a JSON record to
 `deploy/simulated_submissions.log` — never a real network call anywhere.
 Run non-interactively (e.g. under a Scheduled Task) and it notifies but
@@ -101,7 +121,7 @@ Run the full test suite (all fakes, no API key needed, no cost):
 python -m pytest advanced/ -v
 ```
 
-**Expected output:** `52 passed`.
+**Expected output:** `55 passed`.
 
 ## 4. Run the evaluation
 
@@ -113,10 +133,12 @@ python -m eval.run_eval --solution both               # both reports back to bac
 ```
 
 **Expected output for baseline:** a per-case classification table plus
-`TP=3  FP=5  TN=4  FN=0`, `Precision: 0.38`, `Recall: 1.00`,
+`TP=3  FP=5  TN=4  FN=1`, `Precision: 0.38`, `Recall: 0.75`,
 `False-positive rate: 0.56` — see [`../CHANGELOG.md`](../CHANGELOG.md)
-for the full entry. **Expected output for advanced (real, not `--fake`):**
-`TP=3  FP=0  TN=9  FN=0`, `Precision: 1.00`, `Recall: 1.00`,
+for the full entry (case 13 is baseline's one false negative — a real
+opening signaled without the literal keyword). **Expected output for
+advanced (real, not `--fake`):**
+`TP=4  FP=0  TN=9  FN=0`, `Precision: 1.00`, `Recall: 1.00`,
 `False-positive rate: 0.00` — see `../CHANGELOG.md`'s "Real advanced
 numbers" entry for the full run, including sample reasoning from the
 model. `--fake` mode gives a different, lower-precision result (a $0

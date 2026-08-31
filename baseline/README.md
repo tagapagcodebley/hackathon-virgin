@@ -28,12 +28,15 @@ was never given the criteria to begin with.
   diff contains `keyword`; never crashes on a fetch error; can notify for
   real (email) and run unattended (see "Deployment" below).
 - Does **not** handle: negation ("no slots available" contains the same
-  substring as a real match — its sharpest documented failure); telling
-  a real opening apart from one that doesn't match the user's full
-  criteria (date/time/party size); doing anything with a confirmed match
-  besides notifying — no drafted action, no approval gate, no memory
-  (repeats the same alert every poll); no auto-expire or adaptive
-  polling.
+  substring as a real match — its sharpest false-positive failure);
+  telling a real opening apart from one that doesn't match the user's
+  full criteria (date/time/party size); **recognizing a real opening at
+  all if the page doesn't happen to use the exact configured `keyword`**
+  (a "Book now" link instead of the word "available" — a real miss, not
+  just a false alarm; see case 13 in `../eval/CASES.md`); doing anything
+  with a confirmed match besides notifying — no drafted action, no
+  approval gate, no memory (repeats the same alert every poll); no
+  auto-expire or adaptive polling.
 
 ## Deployment (making it a real, unattended tool)
 
@@ -54,23 +57,27 @@ that's counted as one of advanced's own improvements, not shared here.
 
 ## Known limitations (measured, not hidden)
 
-`python -m eval.run_eval --solution baseline` against the 12
+`python -m eval.run_eval --solution baseline` against the 13
 content-diff cases in [`../eval/CASES.md`](../eval/CASES.md):
 
 ```
-TP=3  FP=5  TN=4  FN=0
+TP=3  FP=5  TN=4  FN=1
 Precision:            0.38
-Recall:               1.00
+Recall:               0.75
 False-positive rate:  0.56
 ```
 
-Recall is perfect — baseline never misses a real opening. Precision is
-poor — it misclassifies negation, all three criteria near-misses, and
-the unrelated FAQ mention as real matches. See
+Precision is poor — it misclassifies negation, all three criteria
+near-misses, and the unrelated FAQ mention as real matches. Recall isn't
+perfect either: case 13 (a real opening signaled by a new "Book now"
+link, not the literal keyword) is a genuine miss, not just a false
+alarm — proof that keyword matching's "it never misses a real opening"
+reputation only held in the earlier case set because every real match
+happened to contain the exact phrase. See
 [`../CHANGELOG.md`](../CHANGELOG.md) for the full entry.
 
 ## Status
 
-Implemented (Stage 2). 18/18 tests pass
+Implemented (Stage 2). 20/20 tests pass
 (`python -m pytest baseline/ test_notifications.py -v`). See
 [`../docs/REPRODUCTION.md`](../docs/REPRODUCTION.md) for exact commands.

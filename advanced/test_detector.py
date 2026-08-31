@@ -55,6 +55,22 @@ def test_decoy_not_detected(tmp_path):
     assert detection.is_match is False
 
 
+def test_recall_gap_detected_without_the_literal_keyword(tmp_path):
+    """Case 13: the page signals a real opening with a new "Book now"
+    link, never using baseline's literal keyword ("slot available") or
+    any lexical overlap with it at all. Confirmed against the real
+    Anthropic API (see CHANGELOG.md): recall stays 1.00 for advanced
+    while baseline's drops to 0.75 on this exact fixture. This test
+    proves the plumbing correctly acts on whatever `classify` reports --
+    same scope note as the rest of this file.
+    """
+    current = load("13-recall-gap.html")
+    detection = detect(
+        None, current, FakeConfig(), new_memory(tmp_path), classify=const_classify(True, "a new booking link appeared for the matching row")
+    )
+    assert detection.is_match is True
+
+
 def test_negation_not_detected(tmp_path):
     """Case 06 -- unlike baseline's keyword substring match, a real LLM
     call is expected to correctly read a negation. This test proves the
