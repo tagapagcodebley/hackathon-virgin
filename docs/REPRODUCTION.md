@@ -77,10 +77,15 @@ python -m advanced.watcher --config advanced/watch_config.example.json --state /
 
 **Expected output:** with the shipped example config (which points at
 the static `eval/fixtures/00-baseline.html` — a "fully booked" page that
-never changes), the first poll fetches it, finds no match, and prints
-nothing; run it again and nothing happens either, since the page hasn't
-changed. To see a real detection, drafted action, and approval prompt,
-point `--config` at a copy of the example with `"source"` changed to
+never changes), nothing prints either way, but **for a different reason
+on each run**: the *first* poll has no prior state to compare against
+(a fresh state file always counts as "changed"), so it still makes one
+real classify() call — it correctly finds no match and prints nothing,
+but this poll needs `ANTHROPIC_API_KEY` regardless. Run it again and the
+*second* poll skips classification entirely, since the page is
+byte-identical to last time — this one is genuinely free. To see a real
+detection, drafted action, and approval prompt, point `--config` at a
+copy of the example with `"source"` changed to
 `eval/fixtures/05-real-match.html` — Sauron will call the Anthropic API,
 correctly detect the match, verify it with a second call, print the
 alert, and (in an interactive terminal) prompt
@@ -96,7 +101,7 @@ Run the full test suite (all fakes, no API key needed, no cost):
 python -m pytest advanced/ -v
 ```
 
-**Expected output:** `51 passed`.
+**Expected output:** `52 passed`.
 
 ## 4. Run the evaluation
 
@@ -129,4 +134,33 @@ the eval result above.
 
 ## Troubleshooting
 
-*(Common issues you hit while building, and the fix — saves judges time.)*
+Real issues hit while building this, not hypothetical ones — see
+`CHANGELOG.md`'s "Real advanced numbers" entry for the full account of
+the second and third:
+
+- **`anthropic.BadRequestError: ... anthropic-workspace-id is required
+  when authenticating with an identity-linked API key`.** Some
+  Anthropic API keys are issued against a specific workspace/account
+  rather than as a standalone developer key, and need an extra header
+  the SDK doesn't attach automatically. Either swap in a standard API
+  key from the Anthropic Console's API Keys page (simplest), or set
+  `ANTHROPIC_WORKSPACE_ID` in the environment (`deploy/secrets.example.ps1`
+  has a template line) — `advanced/detector.py` sends it as a header
+  when present.
+- **`json.decoder.JSONDecodeError: Unexpected UTF-8 BOM`** when loading
+  a `WatchConfig` JSON file. Windows editors (Notepad, PowerShell's own
+  `Set-Content -Encoding utf8`) commonly write a UTF-8 byte-order mark
+  by default. Already fixed in `advanced/criteria.py` (`encoding="utf-8-sig"`,
+  which handles both cases) — only relevant if you're editing
+  `load_config`'s file-reading logic yourself.
+- **Garbled characters (e.g. an em dash showing as `�`) in baseline's
+  console output on Windows.** The default Windows console codepage
+  isn't UTF-8. `baseline/watcher.py`'s CLI entry point calls
+  `sys.stdout.reconfigure(encoding="utf-8")` to fix this — if you're
+  calling `notify()`/`run()` directly from your own script rather than
+  through the CLI, you may need the same line.
+- **Advanced's interactive approval prompt hangs or errors when run
+  non-interactively** (piped input, a script, redirected stdin). This
+  is intentional, not a bug: `advanced/approval.py`'s `_default_approve()`
+  only prompts when `sys.stdin.isatty()` is true, and safely declines
+  (no crash, no guess) otherwise — see its module docstring for why.

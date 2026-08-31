@@ -69,13 +69,34 @@ python -m eval.run_eval --solution both               # needs ANTHROPIC_API_KEY 
 python -m eval.run_eval --solution advanced --fake     # $0 pipeline sanity check instead, if you don't have a key handy
 ```
 
+## Measured improvement
+
+Same 12 cases, same `watch_for`, both solutions given identical fixture
+input — `python -m eval.run_eval --solution both` (real Anthropic API
+for advanced, not `--fake`; see [`CHANGELOG.md`](CHANGELOG.md) for the
+full run and sample model reasoning):
+
+| Metric | Simple baseline | Agent solution | Change |
+|---|---|---|---|
+| Precision | 0.38 | 1.00 | **+0.62** |
+| Recall | 1.00 | 1.00 | unchanged — neither ever misses a real opening |
+| False-positive rate | 0.56 | 0.00 | **−0.56** |
+| Human action per detected match | Read a bare "page changed" alert → re-check the page yourself → judge whether it actually matches → fill out the booking form | Read a pre-drafted, pre-verified match with cited reasoning → tap approve | Qualitative, not stopwatch-timed: "read and judge from scratch" vs. "confirm a draft" |
+| Cost per poll | $0 | ~$0.0001–0.0005 (1–2 `claude-haiku-4-5` calls) | +a fraction of a cent |
+
+Recall staying flat at 1.00 is deliberate context, not a wasted row:
+baseline's failure mode was never missing real openings — it was
+drowning them in false positives (5 of 8 non-matches misfired). Advanced
+eliminates every one of those without giving up any of baseline's
+recall.
+
 ## Improvement changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full iteration history with evidence links.
 
 ## Demo video
 
-*(Link to the ≤5 minute solution video once recorded.)*
+*(Link to the ≤5 minute solution video once recorded — see [`VIDEO_GUIDE.md`](VIDEO_GUIDE.md) for the shot-by-shot script and setup steps.)*
 
 ## Main failure mode & hot take
 

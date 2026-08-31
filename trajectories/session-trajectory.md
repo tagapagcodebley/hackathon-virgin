@@ -950,3 +950,147 @@ environment doesn't have, and two real design corrections made from
 what testing actually revealed (case 11's honest memory-dedup limit,
 case 12's verification trade-off, now the project's Hot Take) rather
 than from what the original design intended.
+
+---
+
+## Stage 3 (continued): real API run, three bugs, real numbers, commit
+
+### Instructions given (verbatim, user messages)
+
+> secrets set. test then commit. just dont proceed to stage 4 yet.
+
+(Preceded by an `AskUserQuestion` where the user chose "set the key as a
+real env var for me to use now (not pasted in chat)" over running it
+themselves or deferring.)
+
+### What the agent did
+
+1. Verified `deploy/secrets.ps1` exists via `Test-Path` only — never
+   `Read()` or catted its contents, to keep the key out of the agent's
+   own context as well as the conversation.
+2. Ran `. .\deploy\secrets.ps1; python -m eval.run_eval --solution both`
+   as a single PowerShell call, so the dot-sourced env var lived only
+   inside that one process. First attempt failed with
+   `anthropic.BadRequestError: ... anthropic-workspace-id is required
+   when authenticating with an identity-linked API key` — a real API
+   constraint (the key's a workspace-linked type), not a bug; the error
+   itself didn't leak anything sensitive. Investigated the SDK's actual
+   env-var/header handling (`anthropic.lib.credentials._constants`) to
+   confirm the fix rather than guessing, added an optional
+   `ANTHROPIC_WORKSPACE_ID` → `anthropic-workspace-id` header path to
+   `_classify_via_llm`, then asked the user how to proceed via
+   `AskUserQuestion`; they chose to switch to a standard key instead.
+3. Retried — got the real, measured result: **precision 1.00, recall
+   1.00, false-positive rate 0.00** (TP=3 FP=0 TN=9 FN=0) on all 12
+   cases, beating both baseline (0.38) and the earlier `--fake` stub
+   (0.60).
+4. Ran a live end-to-end CLI demo against a real match to see genuine
+   model output beyond what the eval table shows. This surfaced two
+   more real bugs in quick succession: a `JSONDecodeError: Unexpected
+   UTF-8 BOM` (a config file written via PowerShell's `Set-Content
+   -Encoding utf8` carries a BOM by default; fixed `criteria.py`'s
+   `load_config` with `encoding="utf-8-sig"`, added
+   `test_load_config_handles_utf8_bom`) and the interactive approval
+   prompt printing the drafted action twice plus crashing with an
+   uncaught `EOFError` on non-interactive stdin (fixed `approval.py`'s
+   `_default_approve` to prompt tersely and catch EOF as a safe
+   decline). Re-verified the live demo twice more after fixing: once
+   confirming a clean decline on EOF, once with piped `"y"` input,
+   confirming `sys.stdin.isatty()` correctly treats a pipe as
+   non-interactive and declines rather than guessing.
+5. Rewrote every doc claim that depended on these numbers with the real
+   ones, not the `--fake` placeholders: added a new top CHANGELOG.md
+   entry ("Real advanced numbers") documenting all three bugs and the
+   result, with a pointer from the superseded `--fake` entry back to it;
+   updated `advanced/README.md`, root `README.md`'s status line, and
+   `docs/REPRODUCTION.md`'s expected-output/cost sections.
+6. Final regression pass (70/70) and clean `git status`, then staged
+   and committed as `79cd55c`, "Stage 3: implement advanced (LLM-agent
+   pipeline), measured for real."
+7. Updated cross-session memory with the real numbers, the three bugs,
+   the credential-handling pattern used (dot-source-and-use-in-one-call,
+   never read/print), and the explicit instruction to hold at the Stage
+   4 gate until asked.
+
+### Human checkpoint
+
+Stage 3 fully committed with real, verified numbers. Held at the Stage
+4 gate as explicitly instructed — did not touch finalization work in
+this entry.
+
+### Outcome
+
+The submission's actual headline result now exists and is real: Sauron
+correctly classifies all 12 evaluation cases with a genuine LLM call,
+zero false positives, matching baseline's perfect recall while fixing
+every one of its false positives. Three real bugs were caught and fixed
+by actually running the thing end-to-end with real credentials, not
+just by unit-testing against fakes — the fakes proved the plumbing was
+right; the live run proved the deployment details were too, once fixed.
+
+---
+
+## Stage 4: finalize
+
+### Instructions given (verbatim, user message)
+
+> stage 3 is clear. let's go to stage 4.
+
+### What the agent did
+
+1. Grepped the whole repo for remaining `TODO`/placeholder language
+   across every judge-facing doc — found exactly one: the demo video
+   link in `README.md` (genuinely can't be filled until recorded).
+2. Did a literal "pretend I'm a judge from a clean checkout" pass:
+   re-ran every command `docs/REPRODUCTION.md` documents, in order, and
+   checked the actual output against the documented "Expected output"
+   for each. Caught two real doc bugs this way, not hypothetical ones:
+   - A stale test count (`51 passed` for `advanced/` — the BOM fix
+     added a 52nd test after that line was written). Fixed.
+   - A materially wrong claim: "the first poll [against the static
+     example config] finds no match and prints nothing" implied it was
+     free, but a fresh state file always counts as "changed"
+     (`has_changed(None, current)` is unconditionally `True`), so the
+     *first* poll always needs one real classify() call regardless of
+     content — verified this precisely by running the example config
+     twice in a row and observing poll 1 needs `ANTHROPIC_API_KEY` while
+     poll 2 (unchanged page) doesn't. Rewrote the doc to say so
+     accurately instead of leaving an accidentally-correct-looking but
+     misleading claim.
+3. Wrote a real `docs/REPRODUCTION.md` "Troubleshooting" section (was a
+   placeholder) from the actual issues hit while building: the
+   workspace-id header requirement, the BOM crash, Windows console
+   encoding garbling special characters, and the intentional
+   non-interactive-decline behavior.
+4. Added the rulebook's suggested "Measured Improvement" comparison
+   table to `README.md` (metric / simple baseline / agent solution /
+   change) — precision, recall, false-positive rate from the real eval
+   run, plus a qualitative (explicitly labeled as not stopwatch-timed)
+   human-time-per-task row and a real cost-per-poll estimate.
+5. Wrote `VIDEO_GUIDE.md` — a full ≤5-minute shot-by-shot script
+   matching the rulebook's required structure (problem + baseline →
+   one realistic execution start to finish → final comparison →
+   changelog highlights, including the closest honest equivalent to "an
+   experiment you removed" — the hand-written `--fake` stub, kept as a
+   testing tool but set aside as an approach once the real model beat
+   it → hot take → close). Per the user's standing preference for
+   teaching-style deliverables (recorded in this agent's memory), each
+   beat pairs a suggested line with a "why this matters" note so the
+   user can explain it in their own words rather than just read a
+   script. Linked from `README.md`'s "Demo video" section.
+6. Final regression pass (70/70, unaffected — this round was docs-only)
+   and clean `git status`.
+
+### Human checkpoint
+
+Presenting the Stage 4 doc work (reproduction fixes, troubleshooting
+section, measured-improvement table, video guide) before committing —
+confirming scope and whether to commit this batch.
+
+### Outcome
+
+Two more real, judge-facing doc bugs caught by actually re-running the
+documented commands rather than assuming they still matched the code.
+The video guide gives the user a concrete, teachable path to the one
+deliverable that genuinely can't be produced by the agent — an actual
+recording.

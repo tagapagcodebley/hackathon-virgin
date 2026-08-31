@@ -5,6 +5,7 @@
 *credentials*
 deploy/secrets.ps1
 deploy/config.ps1
+VIDEO_GUIDE.md
 
 # Local deployment state (persisted between polls, machine-specific)
 deploy/state.txt
